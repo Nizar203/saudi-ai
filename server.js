@@ -61,7 +61,7 @@ async function callAnthropic(messages, system) {
   }
   const body = {
     model: MODEL,
-    max_tokens: 8192,
+    max_tokens: 128000,
     messages,
   };
   if (system) body.system = system;
