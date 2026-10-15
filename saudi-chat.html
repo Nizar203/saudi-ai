@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>محادثة سعودي AI</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f8f6;--card:#fff;--ink:#14231b;--muted:#5d6f64;--line:#dfe7e1;--green:#0b7a43;--me:#e7f4ec;--red:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1511;--card:#16201a;--ink:#e8f0eb;--muted:#9bb0a3;--line:#27342c;--green:#3cc17c;--me:#173324;--red:#ff8a80}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans Arabic",system-ui,sans-serif;display:flex;flex-direction:column}
+header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+header b{font-size:1.1rem}
+#st{font-size:.85rem;color:var(--muted)}
+#log{flex:1;overflow:auto;padding:16px;max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.m{padding:10px 14px;border-radius:14px;line-height:1.7;white-space:pre-wrap;max-width:90%;border:1px solid var(--line)}
+.u{align-self:flex-start;background:var(--me)}
+.a{align-self:flex-end;background:var(--card)}
+.e{align-self:center;color:var(--red);border:0}
+.hint{color:var(--muted);text-align:center;margin-top:20vh}
+form{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);max-width:760px;width:100%;margin:0 auto}
+textarea{flex:1;resize:none;font:inherit;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);min-height:46px;max-height:160px}
+button{font:inherit;font-weight:600;border:0;border-radius:12px;padding:0 20px;background:var(--green);color:#fff;cursor:pointer}
+button:disabled{opacity:.5}
+</style>
+</head>
+<body>
+<header><b>محادثة سعودي AI</b><span id="st">…</span></header>
+<div id="log"><p class="hint">اكتب سؤالك. أول رسالة قد تتأخر قليلاً إذا كان المحرك نائماً.</p></div>
+<form id="f">
+  <textarea id="t" placeholder="اكتب رسالتك…" rows="1"></textarea>
+  <button id="b">أرسل</button>
+</form>
+<script>
+const log = document.getElementById('log'), t = document.getElementById('t'), b = document.getElementById('b');
+const history = [];
+function add(cls, text){ const d=document.createElement('div'); d.className='m '+cls; d.textContent=text; log.appendChild(d); log.scrollTop=log.scrollHeight; return d; }
+fetch('/api/saudi/status').then(r=>r.json()).then(s=>{document.getElementById('st').textContent = s.enabled ? 'المحرك: '+s.model.split('/').pop() : 'المحرك غير مفعّل بعد';}).catch(()=>{});
+t.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); document.getElementById('f').requestSubmit(); } });
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  const text = t.value.trim(); if(!text || b.disabled) return;
+  log.querySelector('.hint')?.remove();
+  add('u', text); history.push({role:'user', content:text}); t.value='';
+  b.disabled = true; const wait = add('a', '…');
+  try {
+    const r = await fetch('/api/saudi/chat', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({messages: history})});
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'خطأ');
+    wait.textContent = d.text; history.push({role:'assistant', content:d.text});
+  } catch(err){ wait.remove(); add('e', err.message); history.pop(); }
+  finally { b.disabled = false; t.focus(); }
+};
+</script>
+</body>
+</html>
