@@ -170,7 +170,7 @@ font:16px/1.7 system-ui,-apple-system,"Segoe UI",Tahoma,"Noto Sans Arabic",sans-
 
 // ---------- الصفحات العامة + إعلانات Google AdSense ----------
 // ADSENSE_CLIENT مثل: ca-pub-1234567890123456 (يُضاف في متغيرات البيئة بعد قبولك في AdSense)
-const ADSENSE_CLIENT = (process.env.ADSENSE_CLIENT || '').trim();
+const ADSENSE_CLIENT = (process.env.ADSENSE_CLIENT || 'ca-pub-1829540228262969').trim();
 const ADSENSE_OK = /^ca-pub-\d{10,20}$/.test(ADSENSE_CLIENT);
 if (ADSENSE_CLIENT && !ADSENSE_OK) console.warn('[تحذير] ADSENSE_CLIENT بصيغة غير صحيحة، يجب أن يكون مثل ca-pub-1234567890123456');
 const ADSENSE_TAG = ADSENSE_OK
