@@ -6,6 +6,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import domainsRouter from './domains.js';
@@ -154,28 +155,6 @@ app.get('/auth/logout', (req, res) => {
   res.redirect('/');
 });
 
-// صفحة تسجيل دخول بسيطة تُعرض بدل الأداة لمن لم يسجّل دخوله بعد
-function loginPageHtml() {
-  return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>سعودي AI — تسجيل الدخول</title>
-<style>
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:#faf9f5;color:#1f1e1d;
-font:16px/1.7 system-ui,-apple-system,"Segoe UI",Tahoma,"Noto Sans Arabic",sans-serif}
-.box{background:#fff;border:1px solid #e5e2da;border-radius:18px;padding:36px 30px;max-width:360px;text-align:center}
-h1{font-size:22px;margin:0 0 10px}
-p{color:#6b6a68;margin:0 0 22px;font-size:15px}
-a.btn{display:inline-flex;align-items:center;gap:10px;background:#046a38;color:#fff;text-decoration:none;
-font-weight:600;padding:12px 22px;border-radius:12px}
-</style></head><body>
-<div class="box">
-<h1>🇸🇦 سعودي AI</h1>
-<p>سجّل الدخول بحساب جوجل للمتابعة إلى الأداة.</p>
-<a class="btn" href="/auth/google">تسجيل الدخول عبر جوجل</a>
-</div>
-</body></html>`;
-}
-
 function forbiddenPageHtml(email) {
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -189,11 +168,38 @@ font:16px/1.7 system-ui,-apple-system,"Segoe UI",Tahoma,"Noto Sans Arabic",sans-
 </body></html>`;
 }
 
-// بوّابة الصفحة الرئيسية: تُعرض الأداة فقط لمن سجّل دخوله (إن كان جوجل مفعّلًا)
+// ---------- الصفحات العامة + إعلانات Google AdSense ----------
+// ADSENSE_CLIENT مثل: ca-pub-1234567890123456 (يُضاف في متغيرات البيئة بعد قبولك في AdSense)
+const ADSENSE_CLIENT = (process.env.ADSENSE_CLIENT || '').trim();
+const ADSENSE_OK = /^ca-pub-\d{10,20}$/.test(ADSENSE_CLIENT);
+if (ADSENSE_CLIENT && !ADSENSE_OK) console.warn('[تحذير] ADSENSE_CLIENT بصيغة غير صحيحة، يجب أن يكون مثل ca-pub-1234567890123456');
+const ADSENSE_TAG = ADSENSE_OK
+  ? `<meta name="google-adsense-account" content="${ADSENSE_CLIENT}">\n<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}" crossorigin="anonymous"></script>`
+  : '';
+const publicCache = new Map();
+function sendPublic(res, file) {
+  let html = publicCache.get(file);
+  if (html === undefined) {
+    try { html = fs.readFileSync(path.join(__dirname, 'public', file), 'utf8'); }
+    catch { html = null; }
+    publicCache.set(file, html);
+  }
+  if (html === null) return res.status(404).send('Not found');
+  res.type('html').send(html.replace('<!--ADSENSE-->', ADSENSE_TAG));
+}
+const PUBLIC_PAGES = ['about.html', 'contact.html', 'privacy.html', 'guides.html',
+  'guides/describe-app.html', 'guides/profit-margin.html', 'guides/choose-domain.html'];
+for (const f of PUBLIC_PAGES) app.get('/' + f, (req, res) => sendPublic(res, f));
+app.get('/ads.txt', (req, res) => {
+  if (!ADSENSE_OK) return res.status(404).type('text').send('');
+  res.type('text').send(`google.com, ${ADSENSE_CLIENT.replace('ca-', '')}, DIRECT, f08c47fec0942fa0\n`);
+});
+
+// بوّابة الصفحة الرئيسية: الزائر غير المسجّل يرى الصفحة التعريفية العامة، والمسجّل يرى الأداة
 app.get('/', (req, res, next) => {
   if (GOOGLE_ENABLED) {
     const email = getSessionEmail(req);
-    if (!email) return res.send(loginPageHtml());
+    if (!email) return sendPublic(res, 'landing.html');
     if (!isAllowed(email)) return res.status(403).send(forbiddenPageHtml(email));
   }
   next();
