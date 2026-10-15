@@ -73,7 +73,7 @@ $('#f').onsubmit = async e => {
   try {
     const r = await fetch('/api/domains/check?q=' + encodeURIComponent(q));
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error);
+    if (!r.ok) throw new Error(d.error + (d.reason ? ' — السبب: ' + d.reason : ''));
     $('#results').innerHTML = d.results.map(x => {
       let right;
       if (x.status === 'available') right = `<span class="price">${x.priceSar} ريال/سنة</span><button data-d="${esc(x.domain)}" data-p="${x.priceSar}">اطلبه</button>`;

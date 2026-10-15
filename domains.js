@@ -68,7 +68,10 @@ router.get('/check', async (req, res) => {
     res.json(v);
   } catch (e) {
     console.error('domains/check', e.code, e.message);
-    res.status(502).json({ error: 'تعذّر فحص الدومين الآن، حاول بعد قليل' });
+    // سبب مختصر يساعد في التشخيص (لا يحتوي أي مفتاح)
+    const reason = !KEY || !SECRET ? 'مفاتيح Porkbun غير مضافة في Render'
+      : (e.code || e.message || '').toString().slice(0, 120);
+    res.status(502).json({ error: 'تعذّر فحص الدومين الآن، حاول بعد قليل', reason });
   }
 });
 
