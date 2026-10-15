@@ -8,6 +8,8 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import domainsRouter from './domains.js';
+import saudiRouter from './saudi-engine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -206,6 +208,11 @@ const limiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'rate_limited' },
 });
+
+// بيع الدومينات: متاح للزوار بلا تسجيل دخول، وخارج حد الطلبات العام
+// (البحث رخيص ومخزّن مؤقتاً، ولوحة المدير محمية برمز DOMAINS_ADMIN_TOKEN)
+app.use('/api/domains', domainsRouter);
+
 app.use('/api/', limiter);
 
 function checkAccess(req, res, next) {
@@ -219,6 +226,9 @@ function checkAccess(req, res, next) {
   if (req.get('x-access-code') === ACCESS_CODE) return next();
   return res.status(401).json({ error: 'unauthorized' });
 }
+
+// المحرك الخاص (ALLaM): يتطلب تسجيل الدخول مثل بقية الأداة لأن كل رسالة تكلّف
+app.use('/api/saudi', checkAccess, saudiRouter);
 
 const BUILD_SYSTEM = [
   'You are an expert front-end engineer and designer acting as an AI app builder.',
