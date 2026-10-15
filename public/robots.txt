@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /auth/
+Sitemap: https://saudi-ai.onrender.com/sitemap.xml
