@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>بروست الكنج — قائمة الطعام</title>
+<meta name="description" content="قائمة طعام بروست الكنج: الوجبات والمقبلات والمشروبات بالأسعار، واطلب مباشرة عبر واتساب.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Reem+Kufi:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fbf6ef;--card:#fff;--ink:#2a1a10;--mute:#7a6555;--line:#eedfcc;--brand:#b4451f;--brand-ink:#fff;--gold:#e0a43a;--wa:#1f8f4e}
+@media (prefers-color-scheme:dark){:root{--bg:#1b130e;--card:#261a13;--ink:#f5ebe0;--mute:#bba692;--line:#3a2a1f;--brand:#e0693d;--brand-ink:#1b130e;--gold:#f0b850;--wa:#3cc275}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "IBM Plex Sans Arabic",system-ui,sans-serif;padding-bottom:84px}
+header{background:var(--brand);color:#fff;padding:28px 16px 22px;text-align:center}
+header h1{margin:0;font:700 2.2rem/1.2 "Reem Kufi","IBM Plex Sans Arabic",sans-serif}
+header p{margin:6px 0 0;opacity:.9}
+nav{position:sticky;top:0;z-index:2;display:flex;gap:8px;overflow-x:auto;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+nav a{flex:none;text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line);padding:6px 14px;border-radius:99px;font-size:.92rem}
+main{max-width:640px;margin:0 auto;padding:8px 16px}
+h2{font:700 1.3rem "Reem Kufi","IBM Plex Sans Arabic",sans-serif;margin:26px 0 10px;scroll-margin-top:60px}
+.item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px}
+.item .t{flex:1;min-width:0}
+.item b{display:block}
+.item small{color:var(--mute)}
+.price{font-weight:700;color:var(--brand);white-space:nowrap}
+.qty{display:flex;align-items:center;gap:6px}
+.qty button{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:1.1rem;cursor:pointer}
+.qty span{min-width:1.2em;text-align:center;font-weight:600}
+#cart{position:fixed;inset:auto 0 0 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--line);display:flex;align-items:center;gap:12px;justify-content:center}
+#cart .sum{font-weight:700}
+#order{background:var(--wa);color:#fff;border:0;border-radius:12px;padding:12px 20px;font:inherit;font-weight:700;cursor:pointer}
+#order:disabled{opacity:.45;cursor:default}
+footer{text-align:center;color:var(--mute);font-size:.85rem;margin:30px 0 10px}
+footer a{color:var(--mute)}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+</style>
+</head>
+<body>
+<header>
+<h1>بروست الكنج</h1>
+<p>اختر طلبك وأرسله مباشرة عبر واتساب</p>
+</header>
+<nav id="tabs" aria-label="أقسام القائمة"></nav>
+<main id="menu"></main>
+<footer>صُنعت هذه القائمة بواسطة <a href="https://saudi-ai.onrender.com/?ref=broast-alking">سعودي AI</a> — اصنع قائمة لمطعمك مجاناً</footer>
+<div id="cart"><span class="sum" id="sum">لم تختر شيئاً بعد</span><button id="order" disabled>أرسل الطلب عبر واتساب</button></div>
+<script>
+// ===== عدّل القائمة والرقم من هنا =====
+const WHATSAPP = '966538612401'; // رقم واتساب المطعم لاستقبال الطلبات
+const MENU = [
+  { section: 'الوجبات', items: [
+    { name: 'وجبة بروست عائلية', note: '8 قطع، بطاطس كبير، ثومية، خبز', price: 45 },
+    { name: 'وجبة بروست فردية', note: '4 قطع، بطاطس، ثومية، خبز', price: 18 },
+    { name: 'وجبة سبايسي', note: '4 قطع حارة، بطاطس، ثومية', price: 20 },
+    { name: 'وجبة أطفال', note: '2 قطعة، بطاطس صغير، عصير', price: 12 },
+  ]},
+  { section: 'المقبلات', items: [
+    { name: 'بطاطس كبير', note: '', price: 7 },
+    { name: 'ثومية إضافية', note: '', price: 2 },
+    { name: 'كول سلو', note: '', price: 4 },
+  ]},
+  { section: 'المشروبات', items: [
+    { name: 'مشروب غازي', note: '', price: 3 },
+    { name: 'ماء', note: '', price: 1 },
+  ]},
+];
+// =====================================
+const cart = {};
+const menuEl = document.getElementById('menu'), tabsEl = document.getElementById('tabs');
+MENU.forEach((sec, si) => {
+  const id = 's' + si;
+  const a = document.createElement('a'); a.href = '#' + id; a.textContent = sec.section; tabsEl.appendChild(a);
+  const h = document.createElement('h2'); h.id = id; h.textContent = sec.section; menuEl.appendChild(h);
+  sec.items.forEach((it, ii) => {
+    const key = si + '-' + ii;
+    const row = document.createElement('div'); row.className = 'item';
+    const t = document.createElement('div'); t.className = 't';
+    const b = document.createElement('b'); b.textContent = it.name; t.appendChild(b);
+    if (it.note) { const s = document.createElement('small'); s.textContent = it.note; t.appendChild(s); }
+    const p = document.createElement('span'); p.className = 'price'; p.textContent = it.price + ' ريال';
+    const q = document.createElement('div'); q.className = 'qty';
+    const minus = document.createElement('button'); minus.textContent = '−'; minus.setAttribute('aria-label', 'إنقاص ' + it.name);
+    const n = document.createElement('span'); n.textContent = '0';
+    const plus = document.createElement('button'); plus.textContent = '+'; plus.setAttribute('aria-label', 'إضافة ' + it.name);
+    const set = v => { cart[key] = Math.max(0, v); n.textContent = cart[key]; update(); };
+    minus.onclick = () => set((cart[key] || 0) - 1);
+    plus.onclick = () => set((cart[key] || 0) + 1);
+    q.append(minus, n, plus);
+    row.append(t, p, q); menuEl.appendChild(row);
+  });
+});
+function lines() {
+  const out = []; let total = 0;
+  for (const [k, c] of Object.entries(cart)) { if (!c) continue;
+    const [si, ii] = k.split('-').map(Number); const it = MENU[si].items[ii];
+    out.push(`${c} × ${it.name} = ${c * it.price} ريال`); total += c * it.price; }
+  return { out, total };
+}
+function update() {
+  const { out, total } = lines();
+  document.getElementById('sum').textContent = out.length ? `المجموع: ${total} ريال` : 'لم تختر شيئاً بعد';
+  document.getElementById('order').disabled = !out.length;
+}
+document.getElementById('order').onclick = () => {
+  const { out, total } = lines(); if (!out.length) return;
+  const msg = `طلب جديد من بروست الكنج:\n${out.join('\n')}\nالمجموع: ${total} ريال`;
+  location.href = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`;
+};
+</script>
+</body>
+</html>
