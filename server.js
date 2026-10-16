@@ -214,7 +214,7 @@ app.get('/', (req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, file) {
-    res.setHeader('Cache-Control', /\.html?$/.test(file) ? 'no-cache' : 'public, max-age=86400');
+    res.setHeader('Cache-Control', /\.(html?|js)$/.test(file) ? 'no-cache' : 'public, max-age=86400');
   },
 }));
 
@@ -315,7 +315,7 @@ app.get('/p/:slug', async (req, res) => {
     html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + PUB_SHIM) : PUB_SHIM + html;
     html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, PUB_BADGE + '</body>') : html + PUB_BADGE;
     res.set({
-      'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads',
+      'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads',
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'public, max-age=60',
     }).type('html').send(html);
@@ -351,6 +351,9 @@ const BUILD_SYSTEM = [
   'Never use localStorage directly for app data. To persist user data use the global window.appDB',
   '(synchronous, saved automatically per project): appDB.get(key, fallback) and appDB.set(key, jsonValue);',
   'load saved data at startup and call set after every change.',
+  'WhatsApp: when the app takes bookings, orders or inquiries and a WhatsApp number is known (brief or request), send each one through a',
+  'https://wa.me/<number>?text=<encodeURIComponent(message)> link opened with window.open(url,"_blank") (fall back to location.href if it returns null),',
+  'with a clear Arabic message listing every detail. Saudi numbers like 05XXXXXXXX become 9665XXXXXXXX. Keep any existing WhatsApp number unless asked.',
   'If the app has several screens or pages, build them as views inside the same file with in-app navigation (tabs or sidebar).',
   'If a CURRENT APP is given, apply the change to it and return the full updated file.',
   'Change only what the request asks for; keep everything else (layout, colors, features, data keys) exactly as it is.',

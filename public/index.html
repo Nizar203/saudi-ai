@@ -133,6 +133,31 @@ body[data-mode=build] #tabs{display:flex}
 body[data-mode=build][data-pane=chat] #prev{display:none}
 body[data-mode=build][data-pane=preview] #chatp{display:none}
 }
+/* القوالب الجاهزة */
+#tplBtn{background:var(--accent-soft);border-color:var(--accent-soft);color:var(--accent);font-weight:600}
+body[data-mode=chat] #tplBtn,body[data-mode=image] #tplBtn{display:none}
+dialog#tpl{width:min(640px,calc(100% - 24px));max-height:calc(100% - 24px);border:0;border-radius:18px;padding:0;background:var(--panel);color:var(--ink);box-shadow:0 30px 80px -30px rgba(0,0,0,.5)}
+dialog#tpl::backdrop{background:rgba(10,20,15,.45)}
+.tpl-h{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.tpl-h b{font:700 1.15rem "Reem Kufi","IBM Plex Sans Arabic",sans-serif;flex:1}
+.tpl-b{padding:16px 18px;overflow:auto}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.tpl-grid button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:start;padding:14px;border-radius:14px}
+.tpl-grid button span{font-size:1.6rem}
+.tpl-grid button small{color:var(--mute);font-size:.8rem}
+.tpl-grid button:hover{border-color:var(--accent);background:var(--accent-soft)}
+#tplForm{display:grid;gap:12px}
+#tplForm label{display:grid;gap:4px;font-size:.88rem;color:var(--mute)}
+#tplForm input,#tplForm textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+#tplForm textarea{resize:vertical;min-height:120px;font-size:.9rem}
+#tplForm .r2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#tplForm .pal{display:flex;gap:8px;flex-wrap:wrap}
+#tplForm .pal label{display:flex;align-items:center;gap:6px;cursor:pointer;border:1px solid var(--line);border-radius:99px;padding:4px 10px 4px 6px;color:var(--ink)}
+#tplForm .pal i{width:18px;height:18px;border-radius:50%;display:inline-block}
+#tplForm .hint{font-size:.8rem;color:var(--mute)}
+#tplForm .act{display:flex;gap:8px;justify-content:flex-end}
+#tplErr{color:var(--danger);font-size:.86rem;min-height:1.2em}
+@media (max-width:560px){#tplForm .r2{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -156,7 +181,7 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <div id="toolbar">
 <div id="enginebar"><span>المحرك</span><div class="seg" id="engineSeg"><button data-e="anthropic" class="on">Claude</button><button data-e="openai">ChatGPT</button><button data-e="gemini">Gemini</button><button data-e="saudi" title="نموذج ALLaM العربي المفتوح من سدايا، للمحادثة فقط">ALLaM</button></div></div>
 <div id="imgbar"><span>المقاس</span><select id="aspect" aria-label="مقاس الصورة"><option value="1:1">مربع</option><option value="9:16">ستوري / جوال</option><option value="16:9">عريض</option><option value="4:5">منشور</option></select><button id="up">رفع صورة</button><input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden></div>
-<div id="projbar"><select id="proj" aria-label="المشروع"></select><button id="new"></button><button id="del">حذف</button><span id="sync" aria-live="polite"></span></div>
+<div id="projbar"><button id="tplBtn">قوالب جاهزة</button><select id="proj" aria-label="المشروع"></select><button id="new"></button><button id="del">حذف</button><span id="sync" aria-live="polite"></span></div>
 </div>
 <main>
 <section id="chatp">
@@ -197,15 +222,32 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <button id="dl" disabled>تحميل HTML</button>
 </div>
 <div id="pubbar"><span>منشور على:</span><a id="pubUrl" target="_blank" rel="noopener"></a><button id="pubCopy">نسخ</button><button id="pubOff">إلغاء النشر</button></div>
-<iframe id="frame" sandbox="allow-scripts allow-forms allow-modals" title="preview"></iframe>
+<iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox" title="preview"></iframe>
 <pre id="code" hidden></pre>
 <p class="brief-note" id="briefNote" hidden>هذه ذاكرة المشروع: يقرؤها الذكاء الاصطناعي قبل كل تعديل ويحدّثها بعده. عدّلها بنفسك لتثبيت أي قرار تريده.</p>
 <textarea id="brief" hidden dir="auto" placeholder="سيُكتب ملف المشروع تلقائيًا بعد أول بناء…"></textarea>
-<div id="empty"><b>المعاينة</b><span>اكتب وصف تطبيقك في المحادثة وسيظهر هنا جاهزاً للتجربة</span></div>
+<div id="empty"><b>المعاينة</b><span>اكتب وصف تطبيقك في المحادثة وسيظهر هنا جاهزاً للتجربة، أو ابدأ من «قوالب جاهزة» بالأعلى</span></div>
 </section>
 </main>
+<dialog id="tpl" aria-labelledby="tplTitle">
+<div class="tpl-h"><b id="tplTitle">ابدأ من قالب جاهز</b><button id="tplBack" hidden>رجوع</button><button id="tplClose" aria-label="إغلاق">✕</button></div>
+<div class="tpl-b">
+<div id="tplPick"><p style="margin:0 0 12px;color:var(--mute);font-size:.9rem">اختر نوع نشاطك، واملأ بياناته، ويجهز تطبيقك فوراً مع استقبال الحجوزات والطلبات على واتساب. بعدها عدّل عليه بالمحادثة كما تشاء.</p><div class="tpl-grid" id="tplGrid"></div></div>
+<form id="tplForm" hidden novalidate>
+<div class="r2"><label>اسم النشاط *<input id="tName" required maxlength="60"></label><label>رقم واتساب النشاط *<input id="tWa" type="tel" inputmode="tel" placeholder="05XXXXXXXX" dir="ltr"></label></div>
+<div class="r2"><label>المدينة / الحي<input id="tCity" maxlength="60"></label><label>أوقات العمل<input id="tHours" maxlength="80" placeholder="مثال: يومياً 4 م – 11 م"></label></div>
+<label>العبارة التعريفية<input id="tTag" maxlength="140"></label>
+<label>رابط الموقع على خرائط جوجل (اختياري)<input id="tMaps" dir="ltr" placeholder="https://maps.app.goo.gl/..."></label>
+<label><span id="tItemsLbl">الخدمات والأسعار</span><textarea id="tItems" dir="auto"></textarea><span class="hint">سطر لكل بند بالشكل: الاسم | السعر. اترك السعر فارغاً إن كان يُحدد عند التواصل.</span></label>
+<div><div style="font-size:.88rem;color:var(--mute);margin-bottom:6px">اللون</div><div class="pal" id="tPal"></div></div>
+<div id="tplErr" role="alert"></div>
+<div class="act"><button type="submit" id="send2" class="on">جهّز التطبيق</button></div>
+</form>
+</div>
+</dialog>
 <nav id="tabs"><button data-p="chat" class="on">المحادثة</button><button data-p="preview">المعاينة</button></nav>
 </div>
+<script src="/templates.js"></script>
 <script>
 const $=s=>document.querySelector(s),D=document.body,F='\x60\x60\x60';
 const logs={build:$('#log-build'),chat:$('#log-chat'),image:$('#log-image')},inp=$('#inp'),frame=$('#frame'),codeEl=$('#code'),briefEl=$('#brief');
@@ -236,7 +278,7 @@ for(const r of list){const l=local.get(r.id);if(l){l.slug=r.slug;merged.push(l);
 for(const l of local.values())if(worth(l))merged.unshift(l);
 S.projects=merged;if(!P())S.cur=S.projects.length?S.projects[0].id:null;
 if(!S.projects.length)newProject();else{save();openProject()}setSync('✓ محفوظ في حسابك')}
-function lock(b){busy=b;const pb=document.getElementById('pub');if(pb)pb.disabled=b||!(P()&&P().html);$('#send').textContent=b?'إيقاف':'إرسال';['proj','new','del'].forEach(i=>$('#'+i).disabled=b);briefEl.readOnly=b}
+function lock(b){busy=b;const pb=document.getElementById('pub');if(pb)pb.disabled=b||!(P()&&P().html);$('#send').textContent=b?'إيقاف':'إرسال';['proj','new','del','tplBtn'].forEach(i=>$('#'+i).disabled=b);briefEl.readOnly=b}
 const inject=(h,s)=>/<head[^>]*>/i.test(h)?h.replace(/<head[^>]*>/i,m=>m+s):s+h;
 const FALL='<script>window.appDB=window.appDB||{get:function(k,f){try{var v=localStorage.getItem("appdb:"+k);return v==null?f:JSON.parse(v)}catch(e){return f}},set:function(k,v){try{localStorage.setItem("appdb:"+k,JSON.stringify(v))}catch(e){}}}<\/script>';
 const ERRSHIM='<script>(function(){var n=0;function s(m){if(n++<5)parent.postMessage({apperr:String(m).slice(0,400)},"*")}addEventListener("error",function(e){s((e.message||"error")+(e.lineno?" (سطر "+e.lineno+")":""))});addEventListener("unhandledrejection",function(e){s("Promise: "+((e.reason&&e.reason.message)||e.reason))})})()<\/script>';
@@ -364,6 +406,32 @@ try{clearTimeout(tS);await syncNow();const r=await jfetch('/api/projects/'+p.id+
 catch(e){alert('تعذّر النشر: '+e.message);syncPub()}}
 async function unpublish(){const p=P();if(!p||!p.slug)return;if(!confirm('سيتوقف الرابط عن العمل لكل من لديه. متأكد؟'))return;
 try{await jfetch('/api/projects/'+p.id+'/publish','DELETE');p.slug=null;save();syncPub()}catch(e){alert('تعذّر إلغاء النشر: '+e.message)}}
+// ---------- القوالب الجاهزة ----------
+let tplType=null;
+function openTpl(){const T=window.SaudiTemplates;if(!T){alert('تعذّر تحميل القوالب، حدّث الصفحة.');return}
+const g=$('#tplGrid');if(!g.childElementCount)Object.entries(T.TYPES).forEach(([k,t])=>{const b=document.createElement('button');b.type='button';
+b.innerHTML='<span aria-hidden="true"></span><b></b><small></small>';b.querySelector('span').textContent=t.icon;b.querySelector('b').textContent=t.label;
+b.querySelector('small').textContent=t.kind==='order'?'طلبات بسلة مشتريات':t.kind==='listing'?'عرض واستفسارات':'حجز مواعيد';b.onclick=()=>pickTpl(k);g.appendChild(b)});
+$('#tplPick').hidden=false;$('#tplForm').hidden=true;$('#tplBack').hidden=true;$('#tplTitle').textContent='ابدأ من قالب جاهز';$('#tpl').showModal()}
+function pickTpl(k){const T=window.SaudiTemplates,t=T.TYPES[k];tplType=k;
+$('#tplTitle').textContent=t.icon+' '+t.label;$('#tplPick').hidden=true;$('#tplForm').hidden=false;$('#tplBack').hidden=false;$('#tplErr').textContent='';
+$('#tTag').value=t.tagline;$('#tItems').value=t.items;$('#tItemsLbl').textContent=t.itemsTitle+' والأسعار';
+const pal=$('#tPal');pal.textContent='';Object.entries(T.PALETTES).forEach(([pk,pv])=>{const l=document.createElement('label');l.innerHTML='<input type="radio" name="pal" hidden><i></i><span></span>';
+const r=l.querySelector('input');r.value=pk;r.checked=pk===t.palette;l.querySelector('i').style.background=pv.a;l.querySelector('span').textContent=pv.name;
+l.style.outline=r.checked?'2px solid '+pv.a:'';r.onchange=()=>pal.querySelectorAll('label').forEach(x=>x.style.outline=x.querySelector('input').checked?'2px solid '+T.PALETTES[x.querySelector('input').value].a:'');pal.appendChild(l)});
+setTimeout(()=>$('#tName').focus(),30)}
+function submitTpl(e){e.preventDefault();const T=window.SaudiTemplates;
+const form={name:$('#tName').value.trim(),whatsapp:$('#tWa').value,city:$('#tCity').value.trim(),hours:$('#tHours').value.trim(),
+tagline:$('#tTag').value.trim(),maps:$('#tMaps').value.trim(),items:$('#tItems').value,palette:(document.querySelector('#tPal input:checked')||{}).value};
+if(!form.name){$('#tplErr').textContent='اكتب اسم النشاط.';$('#tName').focus();return}
+if(!T.normPhone(form.whatsapp)){$('#tplErr').textContent='رقم الواتساب غير صحيح. اكتبه مثل 05XXXXXXXX.';$('#tWa').focus();return}
+if(form.maps&&!/^https:\/\//.test(form.maps)){$('#tplErr').textContent='رابط الخريطة يجب أن يبدأ بـ https://';return}
+let html;try{html=T.build(tplType,form)}catch(err){$('#tplErr').textContent=err.message;return}
+let p=P();if(p.html||p.log.length){newProject();p=P()}
+p.html=html;p.brief=T.brief(tplType,form);p.name=form.name.slice(0,28);
+const msg='جهّزت تطبيق «'+form.name+'» من قالب '+T.TYPES[tplType].label+'. الحجوزات والطلبات تصلك على واتساب. اطلب أي تعديل، مثل: «أضف قسم آراء العملاء» أو «غيّر الخط».';
+p.log.push({c:'u',t:'قالب جاهز: '+T.TYPES[tplType].label},{c:'a',t:msg});
+$('#tpl').close();save();openProject();D.dataset.pane='preview';syncTabs()}
 function syncTabs(){document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.p===D.dataset.pane))}
 
 document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
@@ -371,6 +439,7 @@ document.querySelectorAll('#engineSeg button').forEach(b=>b.onclick=()=>setEngin
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{D.dataset.pane=b.dataset.p;syncTabs()});
 document.querySelectorAll('.bar [data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v;frame.hidden=v!=='preview';codeEl.hidden=v!=='code';briefEl.hidden=v!=='brief';$('#briefNote').hidden=v!=='brief';$('#empty').style.display=v==='brief'?'none':'';
 document.querySelectorAll('.bar [data-v]').forEach(x=>x.classList.toggle('on',x===b))});
+$('#tplBtn').onclick=openTpl;$('#tplClose').onclick=()=>$('#tpl').close();$('#tplBack').onclick=openTpl;$('#tplForm').onsubmit=submitTpl;
 $('#pub').onclick=publish;$('#pubOff').onclick=unpublish;$('#pubCopy').onclick=()=>{const u=$('#pubUrl').href;(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>{$('#pubCopy').textContent='تم النسخ';setTimeout(()=>$('#pubCopy').textContent='نسخ',1500)}).catch(()=>prompt('انسخ الرابط:',u))};
 $('#up').onclick=()=>$('#file').click();$('#file').onchange=e=>{const f=e.target.files[0];if(f)loadUpload(f);e.target.value=''};$('#baseX').onclick=()=>{baseImg=null;syncBase()};
 document.querySelectorAll('#chips button,#chipsChat button,#chipsImage button').forEach(b=>b.onclick=()=>send(b.textContent));
