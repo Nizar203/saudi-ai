@@ -356,7 +356,8 @@ function rebuildChat(){logs.chat.textContent='';add('a',W.chat,logs.chat);S.chat
 function newProject(){const p={id:Date.now().toString(36),name:NEWN,html:'',log:[],data:{},brief:''};S.projects.unshift(p);S.cur=p.id;save();openProject()}
 
 function add(c,t,l){const d=document.createElement('div');d.className='m '+c;d.textContent=t;l.appendChild(d);l.scrollTop=l.scrollHeight;syncFresh();return d}
-function parse(t){let brief=null;const bm=/\x60\x60\x60brief[ \t]*\n([\s\S]*?)\x60\x60\x60/.exec(t);if(bm){brief=bm[1].trim();t=t.slice(0,bm.index)+t.slice(bm.index+bm[0].length)}
+function parse(t){const o=parse1(t);if(o.msg)o.msg=o.msg.replace(/\*\*|__/g,'').replace(/^#+\s*/gm,'');return o}
+function parse1(t){let brief=null;const bm=/\x60\x60\x60brief[ \t]*\n([\s\S]*?)\x60\x60\x60/.exec(t);if(bm){brief=bm[1].trim();t=t.slice(0,bm.index)+t.slice(bm.index+bm[0].length)}
 const o=parse0(t);o.brief=brief;return o}
 function parse0(t){const m=/\x60\x60\x60(?:html)?[ \t]*\n/.exec(t);if(!m)return{msg:t.trim(),code:null};
 let c=t.slice(m.index+m[0].length);const j=c.lastIndexOf(F);if(j>=0)c=c.slice(0,j);return{msg:t.slice(0,m.index).trim(),code:c.trim()}}
@@ -427,7 +428,7 @@ bub.textContent=r.text;S.chat.push({c:'u',t:text},{c:'a',t:r.text});save();
 const r=await callBuild(text,pr.html||undefined,pr.brief||undefined,ctrl.signal,t=>{if(!t){bub.textContent='🧠 يخطط للتطبيق… '+Math.round((Date.now()-t0)/1000).toLocaleString('ar')+' ث';return}const i=t.indexOf(F);bub.textContent=(i>=0?t.slice(0,i).trim()+'\n\n':'')+'✍️ جارٍ كتابة التطبيق… '+t.length.toLocaleString('ar')+' حرف'});
 const o=parse(r.text);
 if(o.code&&/<\/html>/i.test(o.code)){pr.html=o.code;if(o.brief){pr.brief=o.brief;if(P()===pr)briefEl.value=o.brief}render();D.dataset.pane='preview';syncTabs();pr.log.push({c:'u',t:opts.label||text},{c:'a',t:(o.msg||'تم بناء التطبيق.')});built=true;if(pr.name===NEWN)pr.name=text.slice(0,28);save();fillSel();bub.textContent=(o.msg||'تم بناء التطبيق.')+'\n\n✅ المعاينة جاهزة، اطلب أي تعديل.'}
-else bub.textContent=(o.msg||r.text)+'\n\n⚠️ لم يكتمل الكود (الناتج طويل). جرّب طلبًا أبسط أو على خطوات.';
+else bub.textContent=(o.msg||r.text)+'\n\n⚠️ انقطع الرد قبل اكتمال الكود. اضغط إرسال على نفس الطلب مرة أخرى، وإن تكرر فاطلب نسخة أبسط ثم أضف الأقسام على خطوات.';
 }
 }catch(e){
 const c=e&&e.code;

@@ -13,8 +13,8 @@ const PLAYBOOKS = [
   {
     match: /محاسب|فاتور|فواتير|دفتر|ضريب|مصروف|ميزاني|حسابات|قيود|invoice|account|bookkeep|erp|billing/i,
     notes: [
-      'Accounting / invoicing system. Modules: لوحة التحكم، المبيعات (فواتير، عروض أسعار، إشعارات دائنة/مرتجعات، مدفوعات العملاء)، العملاء،',
-      'المنتجات والخدمات، المشتريات (فواتير موردين، مدفوعات)، الموردون، المصروفات بتصنيفات، الخزينة والبنوك، التقارير، الإعدادات.',
+      'Accounting / invoicing system. Core modules for the first version: لوحة التحكم، الفواتير (مع المدفوعات)، العملاء، المنتجات والخدمات،',
+      'المصروفات بتصنيفات، الإعدادات (بيانات المنشأة والضريبة). Later, on request: عروض الأسعار، المرتجعات، المشتريات والموردون، الخزينة والبنوك، التقارير المفصلة.',
       'Invoice: sequential number (INV-0001), issue and due dates, customer, line items (item, qty, unit price, discount, VAT 15%),',
       'subtotal, total discount, VAT amount, grand total, paid, balance due, status (مسودة، مرسلة، مدفوعة جزئياً، مدفوعة، متأخرة، ملغاة).',
       'Recording a payment updates paid/balance/status. An overdue invoice is unpaid past its due date.',
@@ -22,8 +22,7 @@ const PLAYBOOKS = [
       'VAT number and CR number, buyer name and buyer VAT number when B2B, the line table, VAT breakdown and totals, with a print button',
       '(@media print hides the app chrome). Leave a clearly labelled box for the ZATCA e-invoicing QR code; do not claim the app is ZATCA certified.',
       'Dashboard KPIs computed from data: إجمالي الفواتير، المحصّل، المستحق، المتأخر، المصروفات، صافي الربح التقريبي، plus a monthly sales vs expenses chart',
-      'and lists of overdue invoices and top customers. Reports: sales by period/customer/item, expenses by category, VAT report (output VAT on sales minus',
-      'input VAT on purchases), customer statement. Customer page shows its invoices, payments and balance. Export tables to CSV.',
+      'and a list of overdue invoices. Customer page shows its invoices, payments and balance. Export tables to CSV.',
     ],
   },
   {
