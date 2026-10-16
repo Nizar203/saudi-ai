@@ -56,8 +56,20 @@ button:disabled{opacity:.45;cursor:not-allowed}
 #proj{flex:1;min-width:0;font:inherit;font-size:.9rem;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 10px}
 #projbar button{font-size:.88rem}
 #del{color:var(--mute)}
-body[data-mode=chat] #proj,body[data-mode=chat] #del{display:none}
-body[data-mode=chat] #projbar{flex:none;min-width:0}
+body[data-mode=chat] #proj,body[data-mode=chat] #del,body[data-mode=image] #proj,body[data-mode=image] #del{display:none}
+body[data-mode=image] #enginebar{display:none}
+#imgbar{display:none;align-items:center;gap:8px;font-size:.85rem;color:var(--mute)}
+body[data-mode=image] #imgbar{display:flex}
+#imgbar select{font:inherit;font-size:.88rem;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:5px 8px}
+#base{display:none;align-items:center;gap:8px;margin:0 16px 8px;padding:6px 8px;border:1px solid var(--line);border-radius:12px;font-size:.84rem;color:var(--mute);background:var(--panel)}
+#base.show{display:flex}
+#base img{width:40px;height:40px;object-fit:cover;border-radius:8px}
+#base button{margin-inline-start:auto;font-size:.8rem;padding:3px 9px}
+.m.img{white-space:normal}
+.m.img img{display:block;max-width:100%;max-height:60vh;border-radius:12px;margin-bottom:8px;background:var(--canvas)}
+.m.img .acts{display:flex;gap:6px;flex-wrap:wrap}
+.m.img .acts button{font-size:.82rem;padding:4px 10px}
+body[data-mode=chat] #projbar,body[data-mode=image] #projbar{flex:none;min-width:0}
 #banner{display:none;padding:9px 20px;font-size:.88rem;background:#5a1f1f;color:#fff}
 #banner.show{display:block}
 
@@ -68,9 +80,9 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(320px,2fr) 3f
 .m{max-width:88%;padding:10px 14px;border-radius:16px;white-space:pre-wrap;overflow-wrap:anywhere}
 .m.u{align-self:flex-start;background:var(--user);border-start-start-radius:4px}
 .m.a{align-self:flex-end;background:var(--bg);border-start-end-radius:4px}
-#chips,#chipsChat{display:flex;flex-wrap:wrap;gap:6px;padding:0 20px 10px}
-#chips button,#chipsChat button{font-size:.84rem;border-radius:99px;color:var(--mute);background:transparent;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#chips button:hover,#chipsChat button:hover{color:var(--ink);background:var(--accent-soft);border-color:var(--accent-soft)}
+#chips,#chipsChat,#chipsImage{display:flex;flex-wrap:wrap;gap:6px;padding:0 20px 10px}
+#chips button,#chipsChat button,#chipsImage button{font-size:.84rem;border-radius:99px;color:var(--mute);background:transparent;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#chips button:hover,#chipsChat button:hover,#chipsImage button:hover{color:var(--ink);background:var(--accent-soft);border-color:var(--accent-soft)}
 .comp{display:flex;gap:8px;align-items:flex-end;margin:0 16px 16px;padding:8px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
 .comp:focus-within{border-color:var(--accent)}
 textarea{flex:1;resize:none;font:inherit;color:inherit;background:transparent;border:0;padding:6px 8px;max-height:140px;outline:none}
@@ -95,10 +107,10 @@ background-image:radial-gradient(var(--line) 1px,transparent 1px);background-siz
 #tabs{display:none;gap:6px;padding:8px;border-top:1px solid var(--line);background:var(--panel)}
 #tabs button{flex:1}
 
-body[data-mode=chat] main{grid-template-columns:1fr}
-body[data-mode=chat] #chatp{max-width:820px;width:100%;margin:0 auto;border:0;background:transparent}
-body[data-mode=chat] .m.a{background:var(--panel)}
-body[data-mode=chat] #prev{display:none}
+body[data-mode=chat] main,body[data-mode=image] main{grid-template-columns:1fr}
+body[data-mode=image] #chatp,body[data-mode=chat] #chatp{max-width:820px;width:100%;margin:0 auto;border:0;background:transparent}
+body[data-mode=chat] .m.a,body[data-mode=image] .m.a{background:var(--panel)}
+body[data-mode=chat] #prev,body[data-mode=image] #prev{display:none}
 
 @media (max-width:800px){
 header{gap:10px;padding:10px 12px;flex-wrap:wrap}
@@ -125,19 +137,22 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <nav class="main" id="modeSeg" aria-label="الخدمات">
 <button data-m="build" class="on">بناء تطبيق</button>
 <button data-m="chat">محادثة</button>
+<button data-m="image">صور</button>
 <a href="/domains.html">دومينات</a>
 </nav>
 </header>
 <div class="sadu" aria-hidden="true"></div>
 <div id="banner"></div>
 <div id="toolbar">
-<div id="enginebar"><span>المحرك</span><div class="seg" id="engineSeg"><button data-e="anthropic" class="on">Claude</button><button data-e="openai">ChatGPT</button><button data-e="saudi" title="نموذج ALLaM العربي المفتوح من سدايا، للمحادثة فقط">ALLaM</button></div></div>
+<div id="enginebar"><span>المحرك</span><div class="seg" id="engineSeg"><button data-e="anthropic" class="on">Claude</button><button data-e="openai">ChatGPT</button><button data-e="gemini">Gemini</button><button data-e="saudi" title="نموذج ALLaM العربي المفتوح من سدايا، للمحادثة فقط">ALLaM</button></div></div>
+<div id="imgbar"><span>المقاس</span><select id="aspect" aria-label="مقاس الصورة"><option value="1:1">مربع</option><option value="9:16">ستوري / جوال</option><option value="16:9">عريض</option><option value="4:5">منشور</option></select><button id="up">رفع صورة</button><input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden></div>
 <div id="projbar"><select id="proj" aria-label="المشروع"></select><button id="new"></button><button id="del">حذف</button></div>
 </div>
 <main>
 <section id="chatp">
 <div class="log" id="log-build"></div>
 <div class="log" id="log-chat" hidden></div>
+<div class="log" id="log-image" hidden></div>
 <div id="chips">
 <button>تطبيق مهام أنيق مع تصنيفات</button>
 <button>لعبة ذاكرة بالبطاقات</button>
@@ -151,6 +166,12 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <button>اكتب ردًا مهذبًا على شكوى عميل من تأخر التوصيل</button>
 <button>اشرح لي كيف أحسب هامش الربح على منتج</button>
 </div>
+<div id="chipsImage" hidden>
+<button>شعار بسيط لمتجر عطور باسم «عود الديرة» بالأخضر والذهبي</button>
+<button>صورة إعلانية لكوب قهوة عربية مع تمر على طاولة خشبية</button>
+<button>بوستر افتتاح فرع جديد بألوان هادئة ومساحة للنص</button>
+</div>
+<div id="base"><img alt=""><span>سيُعدَّل على هذه الصورة</span><button id="baseX">إلغاء</button></div>
 <div class="comp">
 <textarea id="inp" rows="2" dir="auto"></textarea>
 <button id="send">إرسال</button>
@@ -175,8 +196,8 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 </div>
 <script>
 const $=s=>document.querySelector(s),D=document.body,F='\x60\x60\x60';
-const logs={build:$('#log-build'),chat:$('#log-chat')},inp=$('#inp'),frame=$('#frame'),codeEl=$('#code'),briefEl=$('#brief');
-const hints={build:'صف التطبيق الذي تريده، أو اطلب تعديلًا على الحالي…',chat:'اسأل أي شيء…'};
+const logs={build:$('#log-build'),chat:$('#log-chat'),image:$('#log-image')},inp=$('#inp'),frame=$('#frame'),codeEl=$('#code'),briefEl=$('#brief');
+const hints={build:'صف التطبيق الذي تريده، أو اطلب تعديلًا على الحالي…',chat:'اسأل أي شيء…',image:'صف الصورة التي تريدها، أو اطلب تعديلًا على الصورة المختارة…'};let baseImg=null;
 let S={projects:[],cur:null,chat:[],provider:'anthropic'},mode='build',busy=false,ctrl=null,t0,armed=0,W;const NEWN='مشروع جديد';
 const P=()=>S.projects.find(p=>p.id===S.cur);
 const hist=()=>S.chat.map(m=>({role:m.c==='u'?'user':'assistant',content:m.t}));
@@ -200,7 +221,7 @@ function parse0(t){const m=/\x60\x60\x60(?:html)?[ \t]*\n/.exec(t);if(!m)return{
 let c=t.slice(m.index+m[0].length);const j=c.lastIndexOf(F);if(j>=0)c=c.slice(0,j);return{msg:t.slice(0,m.index).trim(),code:c.trim()}}
 function render(){const p=P();frame.srcdoc=inject(p.html,shim(p.data));codeEl.textContent=p.html;$('#empty').hidden=true;$('#dl').disabled=false}
 function setMode(m){mode=m;D.dataset.mode=m;document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));syncEngine();
-logs.build.hidden=m!=='build';logs.chat.hidden=m!=='chat';$('#chips').hidden=m!=='build';$('#chipsChat').hidden=m!=='chat';inp.placeholder=hints[m];$('#new').textContent=m==='build'?'＋ مشروع جديد':'＋ محادثة جديدة'}
+Object.keys(logs).forEach(k=>logs[k].hidden=m!==k);$('#chips').hidden=m!=='build';$('#chipsChat').hidden=m!=='chat';$('#chipsImage').hidden=m!=='image';inp.placeholder=hints[m];$('#new').textContent=m==='build'?'＋ مشروع جديد':m==='image'?'＋ صورة جديدة':'＋ محادثة جديدة';syncBase()}
 
 function downloadHtml(filename, content){
 const blob=new Blob([content],{type:'text/html'});
@@ -226,8 +247,19 @@ if(r.status===429){const err=new Error('rate_limited');err.code='rate_limited';t
 if(!r.ok){let j={};try{j=await r.json()}catch(e){}const err=new Error(j.message||j.error||('HTTP '+r.status));err.code=j.error||'server_error';throw err;}
 return r.json();
 }
-const callBuild=(prompt,currentHtml,brief,signal)=>api('/api/build',{prompt,currentHtml,brief,provider:S.provider||'anthropic'},signal);
-const callChat=(messages,signal)=>S.provider==='saudi'?api('/api/saudi/chat',{messages},signal):api('/api/chat',{messages,provider:S.provider||'anthropic'},signal);
+// طلب متدفق: يعرض النص أولاً بأول ويعيد النص كاملاً في النهاية
+async function apiStream(path,body,signal,onText){
+const headers={'content-type':'application/json'};const code=getAccessCode();if(code)headers['x-access-code']=code;
+const r=await fetch(path,{method:'POST',headers,body:JSON.stringify(Object.assign({stream:true},body)),signal});
+if(r.status===401){const entered=prompt('هذا الموقع محمي برمز وصول. أدخل الرمز:');if(entered){setAccessCode(entered);return apiStream(path,body,signal,onText)}const err=new Error('unauthorized');err.code='not_granted';throw err}
+if(r.status===429){const err=new Error('rate_limited');err.code='rate_limited';throw err}
+if(!r.ok){let j={};try{j=await r.json()}catch(e){}const err=new Error(j.message||j.error||('HTTP '+r.status));err.code=j.error||'server_error';throw err}
+if(!r.body||!/text\/plain/.test(r.headers.get('content-type')||'')){const j=await r.json();onText&&onText(j.text);return j}
+const rd=r.body.getReader(),dec=new TextDecoder();let t='';
+for(;;){const{done,value}=await rd.read();if(done)break;t+=dec.decode(value,{stream:true});const k=t.indexOf('\u0000ERR:');if(k>=0){const err=new Error(t.slice(k+5)||'stream_error');err.code='upstream_error';throw err}onText&&onText(t)}
+return{text:t}}
+const callBuild=(prompt,currentHtml,brief,signal,onText)=>apiStream('/api/build',{prompt,currentHtml,brief,provider:S.provider||'anthropic'},signal,onText);
+const callChat=(messages,signal,onText)=>S.provider==='saudi'?api('/api/saudi/chat',{messages},signal):apiStream('/api/chat',{messages,provider:S.provider||'anthropic'},signal,onText);
 let saudiReady=false;
 function setEngine(e){S.provider=e;save();syncEngine()}
 // ALLaM للمحادثة فقط: في وضع البناء يُعطَّل ويُستخدم Claude
@@ -244,11 +276,14 @@ add('u',text,l);inp.value='';
 lock(true);ctrl=new AbortController();
 const bub=add('a','جارٍ التفكير…',l);
 try{
-if(m==='chat'){
-const r=await callChat(hist().concat({role:'user',content:text}),ctrl.signal);
+if(m==='image'){
+const r=await api('/api/image',{prompt:text,image:baseImg||undefined,aspect:baseImg?undefined:$('#aspect').value},ctrl.signal);
+bub.remove();(r.images||[]).forEach(im=>addImage(im,r.text,text));
+}else if(m==='chat'){
+const r=await callChat(hist().concat({role:'user',content:text}),ctrl.signal,t=>{bub.textContent=t;l.scrollTop=l.scrollHeight});
 bub.textContent=r.text;S.chat.push({c:'u',t:text},{c:'a',t:r.text});save();
 }else{
-const r=await callBuild(text,pr.html||undefined,pr.brief||undefined,ctrl.signal);
+const r=await callBuild(text,pr.html||undefined,pr.brief||undefined,ctrl.signal,t=>{const i=t.indexOf(F);bub.textContent=(i>=0?t.slice(0,i).trim()+'\n\n':'')+'✍️ جارٍ كتابة التطبيق… '+t.length.toLocaleString('ar')+' حرف'});
 const o=parse(r.text);
 if(o.code&&/<\/html>/i.test(o.code)){pr.html=o.code;if(o.brief){pr.brief=o.brief;if(P()===pr)briefEl.value=o.brief}render();D.dataset.pane='preview';syncTabs();pr.log.push({c:'u',t:text},{c:'a',t:(o.msg||'تم بناء التطبيق.')});if(pr.name===NEWN)pr.name=text.slice(0,28);save();fillSel();bub.textContent=(o.msg||'تم بناء التطبيق.')+'\n\n✅ المعاينة جاهزة، اطلب أي تعديل.'}
 else bub.textContent=(o.msg||r.text)+'\n\n⚠️ لم يكتمل الكود (الناتج طويل). جرّب طلبًا أبسط أو على خطوات.';
@@ -259,11 +294,23 @@ bub.textContent=(e&&e.name==='AbortError')||c==='cancelled'?'تم الإيقاف
 c==='not_granted'?'رمز الوصول غير صحيح.':
 c==='rate_limited'?'الطلبات كثيرة، حاول بعد قليل.':
 S.provider==='saudi'&&e&&e.message?e.message:
-c==='missing_api_key'?(S.provider==='openai'?'الخادم لم يُضبط بمفتاح OpenAI API بعد (OPENAI_API_KEY).':'الخادم لم يُضبط بمفتاح Anthropic API بعد.'):
+c==='missing_api_key'&&m==='image'?'الخادم لم يُضبط بمفتاح Gemini بعد (GEMINI_API_KEY).':c==='missing_api_key'&&S.provider==='gemini'?'الخادم لم يُضبط بمفتاح Gemini بعد (GEMINI_API_KEY).':c==='missing_api_key'?(S.provider==='openai'?'الخادم لم يُضبط بمفتاح OpenAI API بعد (OPENAI_API_KEY).':'الخادم لم يُضبط بمفتاح Anthropic API بعد.'):
 'حدث خطأ: '+((e&&e.message)||e);
 }
 lock(false);
 }
+function addImage(im,note,prompt){const l=logs.image,d=document.createElement('div');d.className='m a img';
+const img=document.createElement('img');img.src='data:'+im.mime+';base64,'+im.data;img.alt=prompt;d.appendChild(img);
+if(note){const p=document.createElement('div');p.textContent=note;d.appendChild(p)}
+const acts=document.createElement('div');acts.className='acts';
+const b1=document.createElement('button');b1.textContent='عدّل على هذه';b1.onclick=()=>{baseImg=im;syncBase();inp.focus()};
+const b2=document.createElement('button');b2.textContent='تحميل';b2.onclick=()=>{const a=document.createElement('a');a.href=img.src;a.download='saudi-ai-'+Date.now()+'.'+(im.mime.split('/')[1]||'png');document.body.appendChild(a);a.click();a.remove()};
+acts.append(b1,b2);d.appendChild(acts);l.appendChild(d);l.scrollTop=l.scrollHeight;baseImg=im;syncBase()}
+function syncBase(){const b=$('#base');b.classList.toggle('show',mode==='image'&&!!baseImg);if(baseImg)b.querySelector('img').src='data:'+baseImg.mime+';base64,'+baseImg.data;$('#aspect').disabled=!!baseImg}
+// تصغير الصورة المرفوعة قبل الإرسال لتسريع الطلب
+function loadUpload(f){const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,1536/Math.max(im.width,im.height)),c=document.createElement('canvas');
+c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+const u=c.toDataURL('image/jpeg',.9);baseImg={mime:'image/jpeg',data:u.split(',')[1]};syncBase();add('a','تم رفع الصورة. اكتب التعديل الذي تريده عليها.',logs.image)};im.src=fr.result};fr.readAsDataURL(f)}
 function syncTabs(){document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.p===D.dataset.pane))}
 
 document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
@@ -271,10 +318,11 @@ document.querySelectorAll('#engineSeg button').forEach(b=>b.onclick=()=>setEngin
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{D.dataset.pane=b.dataset.p;syncTabs()});
 document.querySelectorAll('.bar [data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v;frame.hidden=v!=='preview';codeEl.hidden=v!=='code';briefEl.hidden=v!=='brief';$('#briefNote').hidden=v!=='brief';$('#empty').style.display=v==='brief'?'none':'';
 document.querySelectorAll('.bar [data-v]').forEach(x=>x.classList.toggle('on',x===b))});
-document.querySelectorAll('#chips button,#chipsChat button').forEach(b=>b.onclick=()=>send(b.textContent));
+$('#up').onclick=()=>$('#file').click();$('#file').onchange=e=>{const f=e.target.files[0];if(f)loadUpload(f);e.target.value=''};$('#baseX').onclick=()=>{baseImg=null;syncBase()};
+document.querySelectorAll('#chips button,#chipsChat button,#chipsImage button').forEach(b=>b.onclick=()=>send(b.textContent));
 $('#send').onclick=()=>busy?ctrl.abort():send(inp.value);
 $('#proj').onchange=e=>{S.cur=e.target.value;save();openProject()};
-$('#new').onclick=()=>{if(mode==='build')newProject();else{S.chat=[];save();rebuildChat()}};
+$('#new').onclick=()=>{if(mode==='build')newProject();else if(mode==='image'){baseImg=null;syncBase();logs.image.textContent='';add('a',W.image,logs.image)}else{S.chat=[];save();rebuildChat()}};
 $('#del').onclick=function(){if(!armed){this.textContent='تأكيد الحذف؟';armed=setTimeout(()=>{armed=0;this.textContent='حذف'},3000);return}
 clearTimeout(armed);armed=0;this.textContent='حذف';S.projects=S.projects.filter(p=>p.id!==S.cur);if(S.projects.length){S.cur=S.projects[0].id;save();openProject()}else newProject()};
 briefEl.oninput=()=>{const p=P();if(p){p.brief=briefEl.value;save()}};
@@ -283,13 +331,15 @@ $('#dl').onclick=()=>{const p=P();if(p&&p.html)downloadHtml((p.name.replace(/[^\
 
 add('a','أهلًا! صف لي التطبيق الذي تريده وسأبنيه وأعرضه لك فورًا، ثم عدّل عليه بالمحادثة مثل: «غيّر الألوان» أو «أضف صفحة إحصائيات».',logs.build);
 add('a','جرّب إحدى الأدوات السريعة بالأسفل، أو اكتب سؤالك مباشرة.',logs.chat);
-W={build:logs.build.firstChild.textContent,chat:logs.chat.firstChild.textContent};load();P()?openProject():newProject();rebuildChat();setMode('build');
+add('a','صف الصورة التي تريدها وسأصممها لك عبر Nano Banana من جوجل. بعدها اطلب أي تعديل عليها، أو ارفع صورتك وعدّل عليها.',logs.image);
+W={build:logs.build.firstChild.textContent,chat:logs.chat.firstChild.textContent,image:logs.image.firstChild.textContent};load();P()?openProject():newProject();rebuildChat();setMode('build');
 setEngine(S.provider||'anthropic');
 
 fetch('/api/saudi/status').then(r=>r.ok?r.json():{}).then(j=>{saudiReady=!!j.enabled;syncEngine()}).catch(()=>{});
 fetch('/api/health').then(r=>r.json()).then(h=>{
 if(!h.hasOpenAIKey){const b=document.querySelector('#engineSeg [data-e="openai"]');if(b){b.disabled=true;b.title='لم يُضبط OPENAI_API_KEY بعد في الاستضافة'}}
-const activeMissing=S.provider==='saudi'?false:(S.provider==='openai')?!h.hasOpenAIKey:!h.hasApiKey;
+if(!h.hasGeminiKey){const b=document.querySelector('#engineSeg [data-e="gemini"]');if(b){b.disabled=true;b.title='لم يُضبط GEMINI_API_KEY بعد في الاستضافة'}if(S.provider==='gemini')setEngine('anthropic')}
+const activeMissing=S.provider==='saudi'||S.provider==='gemini'?false:(S.provider==='openai')?!h.hasOpenAIKey:!h.hasApiKey;
 if(activeMissing){const b=$('#banner');b.textContent=S.provider==='openai'?'⚠️ لم يُضبط بعد مفتاح OpenAI API (OPENAI_API_KEY) لهذا المحرك.':'⚠️ الخادم يعمل لكن لم يُضبط بعد بمفتاح Anthropic API (ANTHROPIC_API_KEY). أضفه في إعدادات الاستضافة.';b.classList.add('show');}
 }).catch(()=>{const b=$('#banner');b.textContent='⚠️ لا يمكن الوصول لخادم الأداة الآن. تأكد أن الخادم (server.js) يعمل.';b.classList.add('show');});
 </script>

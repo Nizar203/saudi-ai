@@ -5,12 +5,14 @@
 
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import domainsRouter from './domains.js';
 import saudiRouter from './saudi-engine.js';
+import { callGemini, generateImage, geminiEnabled, GEMINI_MODEL, IMAGE_MODEL } from './gemini.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -42,13 +44,17 @@ if (!API_KEY) {
 if (!OPENAI_ENABLED) {
   console.warn('[معلومة] OPENAI_API_KEY غير مضبوط — خيار ChatGPT لن يظهر/يعمل حتى تضيفه.');
 }
+if (!geminiEnabled()) {
+  console.warn('[معلومة] GEMINI_API_KEY غير مضبوط — Gemini وتوليد الصور (Nano Banana) لن يعملا حتى تضيفه.');
+}
 if (!GOOGLE_ENABLED) {
   console.warn('[معلومة] تسجيل الدخول بجوجل غير مفعّل (GOOGLE_CLIENT_ID/SECRET غير مضبوطين) — سيُستخدم ACCESS_CODE إن وُجد.');
 } else if (!ALLOWED_EMAILS.length) {
   console.warn('[تحذير] تسجيل الدخول بجوجل مفعّل لكن ALLOWED_GOOGLE_EMAILS فارغ — أي حساب جوجل سيقدر يدخل الموقع.');
 }
 
-app.use(express.json({ limit: '2mb' }));
+app.use(compression({ filter: (req, res) => !req.path.startsWith('/api/') && compression.filter(req, res) }));
+app.use(express.json({ limit: '12mb' }));
 
 // ---------- أدوات الجلسة (كوكيز موقّعة، بدون قاعدة بيانات) ----------
 function sign(value) {
@@ -205,7 +211,11 @@ app.get('/', (req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, file) {
+    res.setHeader('Cache-Control', /\.html?$/.test(file) ? 'no-cache' : 'public, max-age=86400');
+  },
+}));
 
 const limiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -297,6 +307,49 @@ async function callAnthropic(messages, system) {
   return text;
 }
 
+// نسخة متدفقة: ترسل النص للمتصفح أولاً بأول بدل الانتظار حتى نهاية الرد
+async function streamAnthropic(messages, system, onText) {
+  if (!API_KEY) {
+    const err = new Error('missing_api_key');
+    err.code = 'missing_api_key';
+    throw err;
+  }
+  const body = { model: MODEL, max_tokens: 128000, messages, stream: true };
+  if (system) body.system = system;
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok || !r.body) {
+    let detail = '';
+    try { detail = (await r.json()).error?.message || ''; } catch (e) { /* ignore */ }
+    const err = new Error(detail || `Anthropic API returned ${r.status}`);
+    err.code = 'upstream_error';
+    err.status = r.status;
+    throw err;
+  }
+  const decoder = new TextDecoder();
+  let buf = '';
+  for await (const chunk of r.body) {
+    buf += decoder.decode(chunk, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (!line.startsWith('data:')) continue;
+      let ev;
+      try { ev = JSON.parse(line.slice(5)); } catch { continue; }
+      if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') onText(ev.delta.text);
+      else if (ev.type === 'error') {
+        const err = new Error(ev.error?.message || 'stream_error');
+        err.code = 'upstream_error';
+        throw err;
+      }
+    }
+  }
+}
+
 async function callOpenAI(messages, system) {
   if (!OPENAI_API_KEY) {
     const err = new Error('missing_openai_key');
@@ -332,6 +385,7 @@ async function callOpenAI(messages, system) {
 
 // يختار محرك الذكاء الاصطناعي المطلوب (Claude افتراضيًا، أو ChatGPT إن طُلب ومتاح)
 async function callAI(provider, messages, system) {
+  if (provider === 'gemini') return callGemini(messages, system);
   if (provider === 'openai') {
     if (!OPENAI_ENABLED) {
       const err = new Error('openai_not_configured');
@@ -341,6 +395,37 @@ async function callAI(provider, messages, system) {
     return callOpenAI(messages, system);
   }
   return callAnthropic(messages, system);
+}
+
+// يرد إما دفعة واحدة (JSON) أو متدفقاً (نص عادي) إذا طلب المتصفح stream:true.
+// في التدفق: أي خطأ بعد بدء الإرسال يُكتب بعد العلامة \u0000ERR:
+async function respondAI(req, res, provider, messages, system) {
+  const wantStream = req.body?.stream === true;
+  if (!wantStream) {
+    const text = await callAI(provider, messages, system);
+    return res.json({ text });
+  }
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    res.status(200).set({ 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' });
+    res.flushHeaders();
+  };
+  try {
+    if (!provider || provider === 'anthropic') {
+      await streamAnthropic(messages, system, (t) => { start(); res.write(t); });
+    } else {
+      const text = await callAI(provider, messages, system);
+      start();
+      res.write(text);
+    }
+    start();
+    res.end();
+  } catch (e) {
+    if (!started) throw e;
+    res.end('\u0000ERR:' + (e.message || String(e)));
+  }
 }
 
 app.post('/api/build', checkAccess, async (req, res) => {
@@ -355,8 +440,7 @@ app.post('/api/build', checkAccess, async (req, res) => {
       (currentHtml && typeof currentHtml === 'string'
         ? `CURRENT APP:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nCHANGE REQUEST: `
         : 'APP REQUEST: ') + prompt;
-    const text = await callAI(provider, [{ role: 'user', content: userMsg }], BUILD_SYSTEM);
-    res.json({ text });
+    await respondAI(req, res, provider, [{ role: 'user', content: userMsg }], BUILD_SYSTEM);
   } catch (e) {
     res.status(e.code === 'missing_api_key' ? 500 : 502).json({
       error: e.code || 'server_error',
@@ -371,13 +455,32 @@ app.post('/api/chat', checkAccess, async (req, res) => {
     if (!Array.isArray(messages) || !messages.length) {
       return res.status(400).json({ error: 'bad_request' });
     }
-    const text = await callAI(provider, messages);
-    res.json({ text });
+    await respondAI(req, res, provider, messages);
   } catch (e) {
     res.status(e.code === 'missing_api_key' ? 500 : 502).json({
       error: e.code || 'server_error',
       message: e.message || String(e),
     });
+  }
+});
+
+// توليد وتعديل الصور عبر Nano Banana
+const IMAGE_MIMES = /^image\/(png|jpeg|webp)$/;
+app.post('/api/image', checkAccess, async (req, res) => {
+  try {
+    const { prompt, image, aspect } = req.body || {};
+    if (!prompt || typeof prompt !== 'string' || prompt.length > 4000) return res.status(400).json({ error: 'bad_request' });
+    let img;
+    if (image && typeof image === 'object') {
+      if (!IMAGE_MIMES.test(image.mime || '') || typeof image.data !== 'string') {
+        return res.status(400).json({ error: 'bad_image', message: 'الصورة يجب أن تكون PNG أو JPG أو WEBP.' });
+      }
+      img = { mime: image.mime, data: image.data };
+    }
+    const ratio = /^\d{1,2}:\d{1,2}$/.test(aspect || '') ? aspect : undefined;
+    res.json(await generateImage({ prompt, image: img, aspect: ratio }));
+  } catch (e) {
+    res.status(e.code === 'missing_api_key' ? 500 : 502).json({ error: e.code || 'server_error', message: e.message || String(e) });
   }
 });
 
@@ -388,6 +491,9 @@ app.get('/api/health', (req, res) => {
     model: MODEL,
     hasOpenAIKey: OPENAI_ENABLED,
     openaiModel: OPENAI_MODEL,
+    hasGeminiKey: geminiEnabled(),
+    geminiModel: GEMINI_MODEL,
+    imageModel: IMAGE_MODEL,
     accessProtected: !!ACCESS_CODE || GOOGLE_ENABLED,
     googleLoginEnabled: GOOGLE_ENABLED,
     rateLimitPerHour: RATE_LIMIT_PER_HOUR,
