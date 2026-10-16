@@ -135,8 +135,11 @@ background-image:radial-gradient(var(--line) 1px,transparent 1px);background-siz
 .bar .sp{flex:1}
 #pub{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
 #dl{background:var(--panel)}
-#frame,#code,#brief{flex:1;margin:0 12px 12px;border-radius:12px;border:1px solid var(--line);box-shadow:0 10px 30px -18px rgba(19,32,25,.45)}
-#frame{width:calc(100% - 24px);background:#fff}
+#fwrap,#code,#brief{flex:1;margin:0 12px 12px;border-radius:12px;border:1px solid var(--line);box-shadow:0 10px 30px -18px rgba(19,32,25,.45)}
+#fwrap{position:relative;overflow:hidden;min-height:0;background:#fff}#fwrap[hidden]{display:none}
+#frame{position:absolute;top:0;right:0;width:100%;height:100%;border:0;background:#fff;transform-origin:top right}
+#fwrap.mob{background:var(--canvas)}#fwrap.mob #frame{width:390px;right:50%;margin-right:-195px;border-inline:1px solid var(--line)}
+#dev{background:var(--panel)}
 #code{padding:14px;overflow:auto;direction:ltr;text-align:left;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;background:var(--panel)}
 #brief{padding:14px 16px;resize:none;font-family:inherit;font-size:14px;line-height:1.8;color:var(--ink);background:var(--panel);outline:none}
 #brief:focus{border-color:var(--accent)}
@@ -263,11 +266,12 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <button data-v="code">الكود</button>
 <button data-v="brief" title="ذاكرة المشروع: يقرؤها الذكاء الاصطناعي قبل كل تعديل">ملف المشروع</button>
 <span class="sp"></span>
+<button id="dev" title="بدّل المعاينة بين شاشة المكتب والجوال">🖥️ مكتب</button>
 <button id="dl" disabled>تحميل HTML</button>
 <button id="pub" disabled>نشر برابط</button>
 </div>
 <div id="pubbar"><span>منشور على:</span><a id="pubUrl" target="_blank" rel="noopener"></a><button id="pubCopy">نسخ</button><button id="pubOff">إلغاء النشر</button></div>
-<iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox" title="preview"></iframe>
+<div id="fwrap"><iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox" title="preview"></iframe></div>
 <pre id="code" hidden></pre>
 <p class="brief-note" id="briefNote" hidden>هذه ذاكرة المشروع: يقرؤها الذكاء الاصطناعي قبل كل تعديل ويحدّثها بعده. عدّلها بنفسك لتثبيت أي قرار تريده.</p>
 <textarea id="brief" hidden dir="auto" placeholder="سيُكتب ملف المشروع تلقائيًا بعد أول بناء…"></textarea>
@@ -492,8 +496,15 @@ function syncTabs(){document.querySelectorAll('#tabs button').forEach(b=>b.class
 document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 document.querySelectorAll('#engineSeg button').forEach(b=>b.onclick=()=>setEngine(b.dataset.e));
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{D.dataset.pane=b.dataset.p;syncTabs()});
-document.querySelectorAll('.bar [data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v;frame.hidden=v!=='preview';codeEl.hidden=v!=='code';briefEl.hidden=v!=='brief';$('#briefNote').hidden=v!=='brief';$('#empty').style.display=v==='brief'?'none':'';
+document.querySelectorAll('.bar [data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v;$('#fwrap').hidden=v!=='preview';codeEl.hidden=v!=='code';briefEl.hidden=v!=='brief';$('#briefNote').hidden=v!=='brief';$('#empty').style.display=v==='brief'?'none':'';
 document.querySelectorAll('.bar [data-v]').forEach(x=>x.classList.toggle('on',x===b))});
+// معاينة بعرض شاشة مكتب حقيقي (1280px) مصغّرة لتناسب المساحة، أو بعرض جوال
+(()=>{const W=1280,wrap=$('#fwrap'),dev=$('#dev');let mode='desk';try{mode=localStorage.getItem('sa:dev')||'desk'}catch(e){}
+const fit=()=>{const mob=mode==='mob';wrap.classList.toggle('mob',mob);dev.textContent=mob?'📱 جوال':'🖥️ مكتب';
+if(mob){frame.style.width=frame.style.height=frame.style.transform='';return}
+const cw=wrap.clientWidth;if(!cw)return;const w=Math.max(W,cw),s=cw/w;frame.style.width=w+'px';frame.style.height=(wrap.clientHeight/s)+'px';frame.style.transform='scale('+s+')'};
+dev.onclick=()=>{mode=mode==='mob'?'desk':'mob';try{localStorage.setItem('sa:dev',mode)}catch(e){}fit()};
+if(window.ResizeObserver)new ResizeObserver(fit).observe(wrap);addEventListener('resize',fit);fit()})();
 $('#tplBtn').onclick=()=>{closeMenu();openTpl()};$('#menuBtn').onclick=()=>D.classList.toggle('menu');$('#scrim').onclick=closeMenu;
 $('#tplClose').onclick=()=>$('#tpl').close();$('#tplBack').onclick=openTpl;$('#tplForm').onsubmit=submitTpl;
 $('#pub').onclick=publish;$('#pubOff').onclick=unpublish;$('#pubCopy').onclick=()=>{const u=$('#pubUrl').href;(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>{$('#pubCopy').textContent='تم النسخ';setTimeout(()=>$('#pubCopy').textContent='نسخ',1500)}).catch(()=>prompt('انسخ الرابط:',u))};
