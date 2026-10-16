@@ -641,7 +641,29 @@ async function callAI(provider, messages, system, opts = {}) {
 
 // يرد إما دفعة واحدة (JSON) أو متدفقاً (نص عادي) إذا طلب المتصفح stream:true.
 // في التدفق: أي خطأ بعد بدء الإرسال يُكتب بعد العلامة \u0000ERR:
+// مشاكل الحساب عند Anthropic (رصيد نافد أو مفتاح غير صالح): لا يفيد إعادة المحاولة بنموذج آخر من نفس الحساب
+const isAccountError = (e) => e && (e.status === 401 || e.status === 403 ||
+  /credit balance|billing|purchase credits|invalid x-api-key|authentication/i.test(e.message || ''));
+const accountErrorAr = (e) => /credit balance|billing|purchase credits/i.test(e.message || '')
+  ? 'رصيد محرك Claude نفد. على مسؤول الموقع شحن الرصيد، أو اختر محركاً آخر من شريط «المحرك» في الأعلى.'
+  : 'مفتاح محرك Claude غير صالح. على مسؤول الموقع تحديث المفتاح في إعدادات الخادم، أو اختر محركاً آخر من الأعلى.';
+
+// عند مشكلة في حساب Claude ننتقل تلقائياً لمحرك آخر مضبوط على الخادم بدل أن يتوقف الموقع
 async function respondAI(req, res, provider, messages, system, opts = {}) {
+  try {
+    return await respondAI0(req, res, provider, messages, system, opts);
+  } catch (e) {
+    const isClaude = !provider || provider === 'anthropic';
+    if (!isClaude || res.headersSent || !isAccountError(e)) throw e;
+    const alt = geminiEnabled() ? 'gemini' : OPENAI_ENABLED ? 'openai' : null;
+    console.warn('[engine] مشكلة في حساب Claude:', e.message, alt ? '— التحويل إلى ' + alt : '');
+    if (!alt) { e.message = accountErrorAr(e); throw e; }
+    res.set('x-engine-fallback', alt);
+    return respondAI0(req, res, alt, messages, system, {});
+  }
+}
+
+async function respondAI0(req, res, provider, messages, system, opts = {}) {
   const wantStream = req.body?.stream === true;
   if (!wantStream) {
     const text = await callAI(provider, messages, system, opts);
@@ -696,7 +718,7 @@ app.post('/api/build', checkAccess, async (req, res) => {
       await respondAI(req, res, provider, msgs, BUILD_SYSTEM, opts);
     } catch (e) {
       // إن لم يكن النموذج الأقوى متاحاً لمفتاحك نرجع للنموذج العادي بدل أن يفشل البناء
-      if (res.headersSent || e.status === undefined || ![400, 403, 404].includes(e.status) || BUILD_MODEL === MODEL) throw e;
+      if (res.headersSent || isAccountError(e) || e.status === undefined || ![400, 404].includes(e.status) || BUILD_MODEL === MODEL) throw e;
       console.warn('[build] تعذّر استخدام', BUILD_MODEL, '— الرجوع إلى', MODEL, ':', e.message);
       await respondAI(req, res, provider, msgs, BUILD_SYSTEM, { cache: true });
     }

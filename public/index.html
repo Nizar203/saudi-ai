@@ -397,6 +397,7 @@ async function api(path,body,signal){return (await post(path,body,signal)).json(
 async function apiStream(path,body,signal,onText){
 const r=await post(path,Object.assign({stream:true},body),signal);
 if(!r.body||!/text\/plain/.test(r.headers.get('content-type')||'')){const j=await r.json();onText&&onText(j.text);return j}
+const fb=r.headers.get('x-engine-fallback');if(fb&&typeof showFallback==='function')showFallback(fb);
 const rd=r.body.getReader(),dec=new TextDecoder();let t='';
 for(;;){const{done,value}=await rd.read();if(done)break;t+=dec.decode(value,{stream:true});if(t.indexOf('\u0001')>=0){t=t.replace(/\u0001/g,'');if(!t){onText&&onText('');continue}}const k=t.indexOf('\u0000ERR:');if(k>=0){const err=new Error(t.slice(k+5)||'stream_error');err.code='upstream_error';throw err}onText&&onText(t)}
 return{text:t}}
@@ -411,6 +412,7 @@ sb.title=!saudiReady?'محرك ALLaM غير مفعّل بعد على الخاد�
 if(S.provider==='saudi'&&sb.disabled)S.provider='anthropic';
 document.querySelectorAll('#engineSeg button').forEach(b=>b.classList.toggle('on',b.dataset.e===S.provider))}
 
+function showFallback(e){const n={gemini:'Gemini',openai:'ChatGPT'}[e]||e;add('a','ℹ️ رصيد محرك Claude غير متاح الآن، فاستُخدم محرك '+n+' تلقائياً لهذا الطلب.',logs[mode])}
 async function send(text,opts){opts=opts||{};
 text=text.trim();if(!text||busy)return;if(!opts.auto)lastText=text;
 const l=logs[mode],m=mode,pr=P();let built=false;
