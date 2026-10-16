@@ -27,8 +27,16 @@
 .hero .btn{background:var(--gold);color:var(--deep)}
 .hero .btn.alt{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4)}
 .hero .btn:hover{filter:brightness(1.06)}
-.demo{background:rgba(255,255,255,.97);color:var(--ink);border:0;box-shadow:0 30px 70px -30px rgba(0,0,0,.6)}
-@media (prefers-color-scheme:dark){.demo{background:var(--panel)}}
+.mind{position:relative;display:grid;justify-items:center;gap:10px}
+.mind svg{width:min(420px,100%);height:auto;overflow:visible}
+.mind .ring{transform-origin:210px 210px;animation:spin 60s linear infinite}
+.mind .nodes circle{animation:blink 3.2s ease-in-out infinite}
+.mind .star{transform-origin:210px 210px;animation:breathe 4s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+.typing{margin:0;padding:10px 18px;border-radius:99px;background:rgba(255,255,255,.08);border:1px solid rgba(214,169,71,.35);color:#fff;font-size:1rem;min-height:1.8em;display:flex;align-items:center;gap:2px}
+@media (prefers-reduced-motion:reduce){.mind .ring,.mind .nodes circle,.mind .star{animation:none}}
 .circuit path{stroke-dasharray:900;stroke-dashoffset:900;animation:draw 2.4s ease-out .2s forwards}
 .circuit circle{fill:var(--gold);stroke:none;opacity:0;animation:on .4s ease-out 2.2s forwards}
 @keyframes draw{to{stroke-dashoffset:0}}
@@ -89,16 +97,21 @@
 <div>
 <span class="crest" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-linecap="round"><path d="M12 9.5c.4 4.2.1 8.3-1.3 12.5" stroke="#fff" stroke-width="2.1"/><g stroke="#fff" stroke-width="1.6"><path d="M12 9.5C9.4 6.6 6.2 6.3 3 8.2"/><path d="M12 9.5C10.6 5.6 8 3.6 5 3.3"/><path d="M12 9.5c.3-2.8 0-5.2-.7-7.3"/><path d="M12 9.5c1.5-3.9 4.1-5.9 7-6.2"/><path d="M12 9.5c2.6-2.9 5.8-3.2 9-1.3"/><path d="M12 9.5c-2.9.2-5 1.9-6.3 4.4"/><path d="M12 9.5c2.9.2 5 1.9 6.3 4.4"/></g><circle cx="10.6" cy="11.1" r="1" fill="#d6a947"/><circle cx="13.3" cy="11.1" r="1" fill="#d6a947"/></svg></span>
 <h1>تقنية تتكلم لغتنا<span>وتبني بأيدينا</span></h1>
-<p class="lead">سعودي AI منصة عربية من المملكة، تحوّل وصفك المكتوب بلهجتك إلى تطبيق يعمل: حجوزات لصالونك، طلبات لمتجرك، ومواعيد لعيادتك، تنشره برابط ويصلك كل طلب على واتساب.</p>
+<p class="lead">سعودي AI منصة ذكاء اصطناعي عربية من المملكة، تحوّل وصفك المكتوب بلهجتك إلى تطبيق يعمل، وتنشره برابط لعملائك.</p>
 <div class="btns"><a class="btn" href="/auth/google">ابدأ بحساب جوجل</a><a class="btn alt" href="#templates">شاهد القوالب</a></div>
 </div>
-<div class="demo" aria-label="مثال من الأداة">
-<div class="ask">أبغى صفحة حجز لصالوني فيها الخدمات والأسعار</div>
-<div class="app">
-<div class="bar">صالون لمسة — احجزي موعدك</div>
-<div class="row"><span>قص وتسريح</span><b>80 ريال</b></div>
-<div class="row"><span>صبغة كاملة</span><b>250 ريال</b></div>
-<div class="row"><span>بروتين</span><b>400 ريال</b></div>
+<div class="mind" aria-label="ذكاء اصطناعي يفهم وصفك ويبني تطبيقك">
+<svg viewBox="0 0 420 420" aria-hidden="true">
+<defs><radialGradient id="glow"><stop offset="0" stop-color="#d6a947" stop-opacity=".45"/><stop offset=".55" stop-color="#2fb36b" stop-opacity=".12"/><stop offset="1" stop-color="#2fb36b" stop-opacity="0"/></radialGradient></defs>
+<circle cx="210" cy="210" r="205" fill="url(#glow)"/>
+<g class="ring"><circle cx="210" cy="210" r="140" fill="none" stroke="#d6a947" stroke-opacity=".35" stroke-dasharray="2 10"/><circle cx="210" cy="210" r="196" fill="none" stroke="#fff" stroke-opacity=".12" stroke-dasharray="1 14"/></g>
+<g class="net" stroke="#d6a947" stroke-opacity=".45" stroke-width="1.2"><line x1="210.0" y1="210.0" x2="311.6" y2="252.1"/><line x1="311.6" y1="252.1" x2="252.1" y2="311.6"/><line x1="210.0" y1="210.0" x2="252.1" y2="311.6"/><line x1="252.1" y1="311.6" x2="167.9" y2="311.6"/><line x1="210.0" y1="210.0" x2="167.9" y2="311.6"/><line x1="167.9" y1="311.6" x2="108.4" y2="252.1"/><line x1="210.0" y1="210.0" x2="108.4" y2="252.1"/><line x1="108.4" y1="252.1" x2="108.4" y2="167.9"/><line x1="210.0" y1="210.0" x2="108.4" y2="167.9"/><line x1="108.4" y1="167.9" x2="167.9" y2="108.4"/><line x1="210.0" y1="210.0" x2="167.9" y2="108.4"/><line x1="167.9" y1="108.4" x2="252.1" y2="108.4"/><line x1="210.0" y1="210.0" x2="252.1" y2="108.4"/><line x1="252.1" y1="108.4" x2="311.6" y2="167.9"/><line x1="210.0" y1="210.0" x2="311.6" y2="167.9"/><line x1="311.6" y1="167.9" x2="311.6" y2="252.1"/><line x1="311.6" y1="252.1" x2="378.3" y2="233.7"/><line x1="311.6" y1="252.1" x2="344.0" y2="314.7"/><line x1="252.1" y1="311.6" x2="273.7" y2="367.6"/><line x1="167.9" y1="311.6" x2="186.3" y2="378.3"/><line x1="167.9" y1="311.6" x2="105.3" y2="344.0"/><line x1="108.4" y1="252.1" x2="52.4" y2="273.7"/><line x1="108.4" y1="167.9" x2="41.7" y2="186.3"/><line x1="108.4" y1="167.9" x2="76.0" y2="105.3"/><line x1="167.9" y1="108.4" x2="146.3" y2="52.4"/><line x1="252.1" y1="108.4" x2="233.7" y2="41.7"/><line x1="252.1" y1="108.4" x2="314.7" y2="76.0"/><line x1="311.6" y1="167.9" x2="367.6" y2="146.3"/></g>
+<g class="nodes" fill="#f3d58a"><circle cx="311.6" cy="252.1" r="5" style="animation-delay:0.00s"/><circle cx="252.1" cy="311.6" r="5" style="animation-delay:0.27s"/><circle cx="167.9" cy="311.6" r="5" style="animation-delay:0.54s"/><circle cx="108.4" cy="252.1" r="5" style="animation-delay:0.81s"/><circle cx="108.4" cy="167.9" r="5" style="animation-delay:1.08s"/><circle cx="167.9" cy="108.4" r="5" style="animation-delay:1.35s"/><circle cx="252.1" cy="108.4" r="5" style="animation-delay:1.62s"/><circle cx="311.6" cy="167.9" r="5" style="animation-delay:1.89s"/><circle cx="378.3" cy="233.7" r="3.6" style="animation-delay:2.16s"/><circle cx="344.0" cy="314.7" r="3.6" style="animation-delay:2.43s"/><circle cx="273.7" cy="367.6" r="3.6" style="animation-delay:2.70s"/><circle cx="186.3" cy="378.3" r="3.6" style="animation-delay:2.97s"/><circle cx="105.3" cy="344.0" r="3.6" style="animation-delay:0.04s"/><circle cx="52.4" cy="273.7" r="3.6" style="animation-delay:0.31s"/><circle cx="41.7" cy="186.3" r="3.6" style="animation-delay:0.58s"/><circle cx="76.0" cy="105.3" r="3.6" style="animation-delay:0.85s"/><circle cx="146.3" cy="52.4" r="3.6" style="animation-delay:1.12s"/><circle cx="233.7" cy="41.7" r="3.6" style="animation-delay:1.39s"/><circle cx="314.7" cy="76.0" r="3.6" style="animation-delay:1.66s"/><circle cx="367.6" cy="146.3" r="3.6" style="animation-delay:1.93s"/></g>
+<g class="star"><polygon points="272.0,210.0 210.0,272.0 148.0,210.0 210.0,148.0" fill="#d6a947"/><polygon points="253.8,253.8 166.2,253.8 166.2,166.2 253.8,166.2" fill="#d6a947"/>
+<circle cx="210" cy="210" r="40" fill="#00361b"/><circle cx="210" cy="210" r="40" fill="none" stroke="#f3d58a" stroke-width="1.5"/>
+<path d="M210 186l5.5 15.5L231 207l-15.5 5.5L210 228l-5.5-15.5L189 207l15.5-5.5z" fill="#f3d58a"/></g>
+</svg>
+<p class="typing">✦ ذكاء اصطناعي يفهم العربية</p>
 </div>
 </div>
 </div><svg class="art" viewBox="0 0 1200 440" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
