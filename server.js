@@ -15,6 +15,7 @@ import saudiRouter from './saudi-engine.js';
 import { store, storageKind } from './store.js';
 import { domainNotes } from './playbooks.js';
 import { runAgent, AGENT_RULES } from './agent.js';
+import { clientIp, rateKey, ipSource } from './client-ip.js';
 import { callGemini, generateImage, geminiEnabled, GEMINI_MODEL, IMAGE_MODEL } from './gemini.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -228,7 +229,10 @@ app.use(express.static(path.join(__dirname, 'public'), {
   },
 }));
 
+// كل حدود الاستخدام تعرف الزائر من مصدر لا يستطيع تزويره (انظر client-ip.js)
+const RL = { validate: false, keyGenerator: rateKey((req) => { const e = getSessionEmail(req); return e && isAllowed(e) ? e : null; }) };
 const limiter = rateLimit({
+  ...RL,
   windowMs: 60 * 60 * 1000,
   max: RATE_LIMIT_PER_HOUR,
   standardHeaders: true,
@@ -241,7 +245,7 @@ const limiter = rateLimit({
 app.use('/api/domains', domainsRouter);
 
 // ---------- مشاريع المستخدم على الخادم (تتطلب تسجيل الدخول بجوجل) ----------
-const projectsLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, message: { error: 'rate_limited' } });
+const projectsLimiter = rateLimit({ ...RL, windowMs: 60 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, message: { error: 'rate_limited' } });
 function requireUser(req, res, next) {
   if (!GOOGLE_ENABLED) return res.status(409).json({ error: 'no_accounts', message: 'الحفظ على الخادم يتطلب تفعيل تسجيل الدخول بجوجل.' });
   const email = getSessionEmail(req);
@@ -398,8 +402,8 @@ app.get('/p/:slug', async (req, res) => {
 });
 
 // محاولات الرمز محدودة لمنع التخمين
-const unlockLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false,
-  keyGenerator: (req) => (req.ip || '') + ':' + req.params.slug,
+const unlockLimiter = rateLimit({ validate: false, windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: (req) => clientIp(req) + ':' + req.params.slug,
   handler: (req, res) => res.status(429).type('html').send('<!doctype html><meta charset="utf-8"><p style="font-family:sans-serif;text-align:center;margin-top:20vh">محاولات كثيرة، حاول بعد ١٥ دقيقة.</p>') });
 app.post('/p/:slug/unlock', express.urlencoded({ extended: false, limit: '2kb' }), unlockLimiter, async (req, res) => {
   const { slug } = req.params;
@@ -417,7 +421,7 @@ app.post('/p/:slug/unlock', express.urlencoded({ extended: false, limit: '2kb' }
 });
 
 // حفظ بيانات التطبيق المنشور. الصفحة معزولة (أصلها null) فنسمح بطلبها عبر CORS، والحماية برمز الوصول.
-const pubDataLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: Number(process.env.PUB_WRITES_PER_HOUR || 1200), standardHeaders: true, legacyHeaders: false });
+const pubDataLimiter = rateLimit({ validate: false, keyGenerator: (req) => clientIp(req) + ':' + req.params.slug, windowMs: 60 * 60 * 1000, limit: Number(process.env.PUB_WRITES_PER_HOUR || 1200), standardHeaders: true, legacyHeaders: false });
 const pubCors = (req, res, next) => {
   res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'PUT, OPTIONS',
     'Access-Control-Allow-Headers': 'content-type, x-pub-token', 'Access-Control-Max-Age': '600' });
@@ -842,6 +846,7 @@ app.get('/api/health', (req, res) => {
     imageModel: IMAGE_MODEL,
     accessProtected: !!ACCESS_CODE || GOOGLE_ENABLED,
     googleLoginEnabled: GOOGLE_ENABLED,
+    ipSource: (clientIp(req), ipSource()),
     rateLimitPerHour: RATE_LIMIT_PER_HOUR,
   });
 });

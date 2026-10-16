@@ -1,3 +1,4 @@
+import { clientIp } from './client-ip.js';
 // محرك "سعودي AI" الخاص — نموذج مفتوح (ALLaM) على RunPod أو أي خادم متوافق مع OpenAI
 // يُركَّب في server.js بسطر واحد:
 //   app.use('/api/saudi', express.json(), saudiRouter);
@@ -41,7 +42,7 @@ export async function callSaudiEngine(messages, { system = SYSTEM, maxTokens = 1
 // حماية من الإساءة: كل زائر له عدد محدود من الرسائل في الدقيقة (لأن كل رسالة تكلّفك)
 const hits = new Map();
 function limit(req, res, next) {
-  const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+  const ip = req.userEmail ? 'u:' + req.userEmail : 'ip:' + clientIp(req);
   const now = Date.now();
   const arr = (hits.get(ip) || []).filter(t => now - t < 60000);
   if (arr.length >= PER_MIN) return res.status(429).json({ error: 'رسائل كثيرة، انتظر دقيقة' });
