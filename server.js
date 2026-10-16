@@ -14,6 +14,7 @@ import domainsRouter from './domains.js';
 import saudiRouter from './saudi-engine.js';
 import { store, storageKind } from './store.js';
 import { domainNotes } from './playbooks.js';
+import { runAgent, AGENT_RULES } from './agent.js';
 import { callGemini, generateImage, geminiEnabled, GEMINI_MODEL, IMAGE_MODEL } from './gemini.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -506,6 +507,13 @@ const BUILD_SYSTEM = [
   'then the updated brief in a single ```brief fence; then the complete file in a single ```html fence; nothing after it.',
 ].join(' ');
 
+// تعليمات وضع الوكيل: نفس قواعد التصميم، لكن التسليم عبر الأدوات بدل طباعة الملف كاملاً
+const AGENT_BUILD = process.env.AGENT_BUILD !== 'off';
+const AGENT_SYSTEM = BUILD_SYSTEM
+  .replace("If a CURRENT APP is given, apply the change to it and return the full updated file. ", '')
+  .replace("After every build or change, return an updated brief:", "After every build or change, pass an updated brief to the finish tool:")
+  .replace(/Output format, in this exact order:[\s\S]*$/, '') + ' ' + AGENT_RULES;
+
 // حد أعلى لحجم ملف المعرفة حتى لا يتضخم ويستهلك الرموز
 const BRIEF_MAX = 4000;
 
@@ -696,6 +704,53 @@ async function respondAI0(req, res, provider, messages, system, opts = {}) {
   }
 }
 
+// بناء بوضع الوكيل مع عرض الحالة أولاً بأول للمتصفح:
+// \u0001 نبضة، \u0002نص الحالة\u0003 حالة تُعرض للمستخدم، وفي النهاية النتيجة بالصيغة المعتادة.
+async function agentBuild(req, res, { agentMsg, currentHtml, provider, msgs }) {
+  let started = false;
+  let pending = '';
+  let aborted = false;
+  let lastBeat = 0;
+  res.on('close', () => { if (!res.writableEnded) aborted = true; });
+  const start = () => {
+    if (started) return;
+    started = true;
+    res.status(200).set({ 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache', 'x-accel-buffering': 'no', 'x-build-mode': 'agent' });
+    res.flushHeaders();
+    if (pending) res.write(pending);
+    pending = '';
+  };
+  const write = (t) => { if (aborted) return; started ? res.write(t) : (pending += t); };
+  const beat = () => { start(); const n = Date.now(); if (n - lastBeat > 2000) { lastBeat = n; write('\u0001'); } };
+  const progress = (t) => write('\u0002' + t + '\u0003');
+  const iv = setInterval(() => { if (started) beat(); }, 5000);
+  const run = (model) => runAgent({ apiKey: API_KEY, model, effort: BUILD_EFFORT, system: AGENT_SYSTEM, userMsg: agentMsg,
+    currentHtml, isAborted: () => aborted, progress, beat });
+  try {
+    let out;
+    try {
+      out = await run(BUILD_MODEL);
+    } catch (e) {
+      if (started || isAccountError(e) || ![400, 404].includes(e.status) || BUILD_MODEL === MODEL) throw e;
+      console.warn('[agent] تعذّر استخدام', BUILD_MODEL, '— الرجوع إلى', MODEL, ':', e.message);
+      out = await run(MODEL);
+    }
+    start();
+    write((out.message || 'تم.') + (out.brief ? '\n\n```brief\n' + out.brief.trim() + '\n```' : '') + '\n\n```html\n' + out.html + '\n```');
+    res.end();
+  } catch (e) {
+    if (e.code === 'aborted') return;
+    console.error('[agent]', e.message);
+    if (!started) {
+      // قبل أن يبدأ الرد: نرجع للمحرك المعتاد (وهو ينتقل لمحرك بديل إن كانت المشكلة في رصيد Claude)
+      return respondAI(req, res, provider, msgs, BUILD_SYSTEM, { model: BUILD_MODEL, effort: BUILD_EFFORT, cache: true });
+    }
+    res.end('\u0000ERR:' + (e.code === 'agent_incomplete' ? e.message : 'تعذّر إكمال البناء: ' + (e.message || e)));
+  } finally {
+    clearInterval(iv);
+  }
+}
+
 app.post('/api/build', checkAccess, async (req, res) => {
   try {
     const { prompt, currentHtml, provider, brief } = req.body || {};
@@ -714,6 +769,13 @@ app.post('/api/build', checkAccess, async (req, res) => {
     const fullMsg = (notes ? `DOMAIN NOTES (expert knowledge for this kind of app; apply what fits the request):\n${notes}\n\n` : '') + userMsg;
     const msgs = [{ role: 'user', content: fullMsg }];
     const opts = { model: BUILD_MODEL, effort: BUILD_EFFORT, cache: true };
+    if (AGENT_BUILD && API_KEY && (!provider || provider === 'anthropic') && req.body?.stream === true) {
+      const agentMsg = (notes ? `DOMAIN NOTES (expert knowledge for this kind of app; apply what fits the request):\n${notes}\n\n` : '') +
+        (briefText ? `PROJECT BRIEF:\n${briefText}\n\n` : '') +
+        (isEdit ? `The CURRENT APP is already loaded in index.html (${currentHtml.split('\n').length} lines):\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nCHANGE REQUEST: `
+          : 'index.html is empty. APP REQUEST: ') + prompt;
+      return await agentBuild(req, res, { agentMsg, currentHtml: isEdit ? currentHtml : '', provider, msgs });
+    }
     try {
       await respondAI(req, res, provider, msgs, BUILD_SYSTEM, opts);
     } catch (e) {
@@ -723,6 +785,7 @@ app.post('/api/build', checkAccess, async (req, res) => {
       await respondAI(req, res, provider, msgs, BUILD_SYSTEM, { cache: true });
     }
   } catch (e) {
+    if (res.headersSent) { try { res.end('\u0000ERR:' + (e.message || String(e))); } catch { /* ignore */ } return; }
     res.status(e.code === 'missing_api_key' ? 500 : 502).json({
       error: e.code || 'server_error',
       message: e.message || String(e),
