@@ -84,9 +84,12 @@ background-image:radial-gradient(var(--line) 1px,transparent 1px);background-siz
 .bar [data-v].on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(19,32,25,.12)}
 .bar .sp{flex:1}
 #dl{background:var(--panel)}
-#frame,#code{flex:1;margin:0 16px 16px;border-radius:14px;border:1px solid var(--line);box-shadow:0 10px 30px -18px rgba(19,32,25,.45)}
+#frame,#code,#brief{flex:1;margin:0 16px 16px;border-radius:14px;border:1px solid var(--line);box-shadow:0 10px 30px -18px rgba(19,32,25,.45)}
 #frame{width:calc(100% - 32px);background:#fff}
 #code{padding:14px;overflow:auto;direction:ltr;text-align:left;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;background:var(--panel)}
+#brief{padding:14px 16px;resize:none;font-family:inherit;font-size:14px;line-height:1.8;color:var(--ink);background:var(--panel);outline:none;max-height:none}
+#brief:focus{border-color:var(--accent)}
+.brief-note{margin:0 16px 8px;font-size:.82rem;color:var(--mute)}
 #empty{position:absolute;inset:56px 16px 16px;display:grid;place-items:center;align-content:center;gap:6px;color:var(--mute);text-align:center;padding:20px;pointer-events:none;border:1.5px dashed var(--line);border-radius:14px}
 #empty b{font:700 1.15rem "Reem Kufi","IBM Plex Sans Arabic",sans-serif;color:var(--ink)}
 #tabs{display:none;gap:6px;padding:8px;border-top:1px solid var(--line);background:var(--panel)}
@@ -157,11 +160,14 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <div class="bar">
 <button data-v="preview" class="on">معاينة</button>
 <button data-v="code">الكود</button>
+<button data-v="brief" title="ذاكرة المشروع: يقرؤها الذكاء الاصطناعي قبل كل تعديل">ملف المشروع</button>
 <span class="sp"></span>
 <button id="dl" disabled>تحميل HTML</button>
 </div>
 <iframe id="frame" sandbox="allow-scripts allow-forms allow-modals" title="preview"></iframe>
 <pre id="code" hidden></pre>
+<p class="brief-note" id="briefNote" hidden>هذه ذاكرة المشروع: يقرؤها الذكاء الاصطناعي قبل كل تعديل ويحدّثها بعده. عدّلها بنفسك لتثبيت أي قرار تريده.</p>
+<textarea id="brief" hidden dir="auto" placeholder="سيُكتب ملف المشروع تلقائيًا بعد أول بناء…"></textarea>
 <div id="empty"><b>المعاينة</b><span>اكتب وصف تطبيقك في المحادثة وسيظهر هنا جاهزاً للتجربة</span></div>
 </section>
 </main>
@@ -169,26 +175,28 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 </div>
 <script>
 const $=s=>document.querySelector(s),D=document.body,F='\x60\x60\x60';
-const logs={build:$('#log-build'),chat:$('#log-chat')},inp=$('#inp'),frame=$('#frame'),codeEl=$('#code');
+const logs={build:$('#log-build'),chat:$('#log-chat')},inp=$('#inp'),frame=$('#frame'),codeEl=$('#code'),briefEl=$('#brief');
 const hints={build:'صف التطبيق الذي تريده، أو اطلب تعديلًا على الحالي…',chat:'اسأل أي شيء…'};
 let S={projects:[],cur:null,chat:[],provider:'anthropic'},mode='build',busy=false,ctrl=null,t0,armed=0,W;const NEWN='مشروع جديد';
 const P=()=>S.projects.find(p=>p.id===S.cur);
 const hist=()=>S.chat.map(m=>({role:m.c==='u'?'user':'assistant',content:m.t}));
 function load(){try{const j=localStorage.getItem('studio:v1');if(j)S=Object.assign(S,JSON.parse(j))}catch(e){}}
 function save(){clearTimeout(t0);t0=setTimeout(()=>{try{localStorage.setItem('studio:v1',JSON.stringify(S))}catch(e){}},300)}
-function lock(b){busy=b;$('#send').textContent=b?'إيقاف':'إرسال';['proj','new','del'].forEach(i=>$('#'+i).disabled=b)}
+function lock(b){busy=b;$('#send').textContent=b?'إيقاف':'إرسال';['proj','new','del'].forEach(i=>$('#'+i).disabled=b);briefEl.readOnly=b}
 const inject=(h,s)=>/<head[^>]*>/i.test(h)?h.replace(/<head[^>]*>/i,m=>m+s):s+h;
 const FALL='<script>window.appDB=window.appDB||{get:function(k,f){try{var v=localStorage.getItem("appdb:"+k);return v==null?f:JSON.parse(v)}catch(e){return f}},set:function(k,v){try{localStorage.setItem("appdb:"+k,JSON.stringify(v))}catch(e){}}}<\/script>';
 const shim=d=>'<script>window.appDB=(function(){var c='+JSON.stringify(d).replace(/</g,'\\u003c')+';return{get:function(k,f){return k in c?c[k]:f},set:function(k,v){c[k]=v;parent.postMessage({appdb:1,k:k,v:v},"*")}}})()<\/script>';
 addEventListener('message',e=>{const d=e.data,p=P();if(e.source===frame.contentWindow&&d&&d.appdb&&p){p.data[d.k]=d.v;save()}});
 function fillSel(){const s=$('#proj');s.textContent='';S.projects.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;s.appendChild(o)});s.value=S.cur}
-function openProject(){const p=P();logs.build.textContent='';add('a',W.build,logs.build);p.log.forEach(m=>add(m.c,m.t,logs.build));
+function openProject(){const p=P();briefEl.value=p.brief||'';logs.build.textContent='';add('a',W.build,logs.build);p.log.forEach(m=>add(m.c,m.t,logs.build));
 if(p.html)render();else{frame.srcdoc='';codeEl.textContent='';$('#empty').hidden=false;$('#dl').disabled=true}fillSel()}
 function rebuildChat(){logs.chat.textContent='';add('a',W.chat,logs.chat);S.chat.forEach(m=>add(m.c,m.t,logs.chat))}
-function newProject(){const p={id:Date.now().toString(36),name:NEWN,html:'',log:[],data:{}};S.projects.unshift(p);S.cur=p.id;save();openProject()}
+function newProject(){const p={id:Date.now().toString(36),name:NEWN,html:'',log:[],data:{},brief:''};S.projects.unshift(p);S.cur=p.id;save();openProject()}
 
 function add(c,t,l){const d=document.createElement('div');d.className='m '+c;d.textContent=t;l.appendChild(d);l.scrollTop=l.scrollHeight;return d}
-function parse(t){const m=/\x60\x60\x60(?:html)?[ \t]*\n/.exec(t);if(!m)return{msg:t.trim(),code:null};
+function parse(t){let brief=null;const bm=/\x60\x60\x60brief[ \t]*\n([\s\S]*?)\x60\x60\x60/.exec(t);if(bm){brief=bm[1].trim();t=t.slice(0,bm.index)+t.slice(bm.index+bm[0].length)}
+const o=parse0(t);o.brief=brief;return o}
+function parse0(t){const m=/\x60\x60\x60(?:html)?[ \t]*\n/.exec(t);if(!m)return{msg:t.trim(),code:null};
 let c=t.slice(m.index+m[0].length);const j=c.lastIndexOf(F);if(j>=0)c=c.slice(0,j);return{msg:t.slice(0,m.index).trim(),code:c.trim()}}
 function render(){const p=P();frame.srcdoc=inject(p.html,shim(p.data));codeEl.textContent=p.html;$('#empty').hidden=true;$('#dl').disabled=false}
 function setMode(m){mode=m;D.dataset.mode=m;document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));syncEngine();
@@ -218,7 +226,7 @@ if(r.status===429){const err=new Error('rate_limited');err.code='rate_limited';t
 if(!r.ok){let j={};try{j=await r.json()}catch(e){}const err=new Error(j.message||j.error||('HTTP '+r.status));err.code=j.error||'server_error';throw err;}
 return r.json();
 }
-const callBuild=(prompt,currentHtml,signal)=>api('/api/build',{prompt,currentHtml,provider:S.provider||'anthropic'},signal);
+const callBuild=(prompt,currentHtml,brief,signal)=>api('/api/build',{prompt,currentHtml,brief,provider:S.provider||'anthropic'},signal);
 const callChat=(messages,signal)=>S.provider==='saudi'?api('/api/saudi/chat',{messages},signal):api('/api/chat',{messages,provider:S.provider||'anthropic'},signal);
 let saudiReady=false;
 function setEngine(e){S.provider=e;save();syncEngine()}
@@ -240,9 +248,9 @@ if(m==='chat'){
 const r=await callChat(hist().concat({role:'user',content:text}),ctrl.signal);
 bub.textContent=r.text;S.chat.push({c:'u',t:text},{c:'a',t:r.text});save();
 }else{
-const r=await callBuild(text,pr.html||undefined,ctrl.signal);
+const r=await callBuild(text,pr.html||undefined,pr.brief||undefined,ctrl.signal);
 const o=parse(r.text);
-if(o.code&&/<\/html>/i.test(o.code)){pr.html=o.code;render();D.dataset.pane='preview';syncTabs();pr.log.push({c:'u',t:text},{c:'a',t:(o.msg||'تم بناء التطبيق.')});if(pr.name===NEWN)pr.name=text.slice(0,28);save();fillSel();bub.textContent=(o.msg||'تم بناء التطبيق.')+'\n\n✅ المعاينة جاهزة، اطلب أي تعديل.'}
+if(o.code&&/<\/html>/i.test(o.code)){pr.html=o.code;if(o.brief){pr.brief=o.brief;if(P()===pr)briefEl.value=o.brief}render();D.dataset.pane='preview';syncTabs();pr.log.push({c:'u',t:text},{c:'a',t:(o.msg||'تم بناء التطبيق.')});if(pr.name===NEWN)pr.name=text.slice(0,28);save();fillSel();bub.textContent=(o.msg||'تم بناء التطبيق.')+'\n\n✅ المعاينة جاهزة، اطلب أي تعديل.'}
 else bub.textContent=(o.msg||r.text)+'\n\n⚠️ لم يكتمل الكود (الناتج طويل). جرّب طلبًا أبسط أو على خطوات.';
 }
 }catch(e){
@@ -261,7 +269,7 @@ function syncTabs(){document.querySelectorAll('#tabs button').forEach(b=>b.class
 document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 document.querySelectorAll('#engineSeg button').forEach(b=>b.onclick=()=>setEngine(b.dataset.e));
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{D.dataset.pane=b.dataset.p;syncTabs()});
-document.querySelectorAll('.bar [data-v]').forEach(b=>b.onclick=()=>{const c=b.dataset.v==='code';frame.hidden=c;codeEl.hidden=!c;
+document.querySelectorAll('.bar [data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v;frame.hidden=v!=='preview';codeEl.hidden=v!=='code';briefEl.hidden=v!=='brief';$('#briefNote').hidden=v!=='brief';$('#empty').style.display=v==='brief'?'none':'';
 document.querySelectorAll('.bar [data-v]').forEach(x=>x.classList.toggle('on',x===b))});
 document.querySelectorAll('#chips button,#chipsChat button').forEach(b=>b.onclick=()=>send(b.textContent));
 $('#send').onclick=()=>busy?ctrl.abort():send(inp.value);
@@ -269,6 +277,7 @@ $('#proj').onchange=e=>{S.cur=e.target.value;save();openProject()};
 $('#new').onclick=()=>{if(mode==='build')newProject();else{S.chat=[];save();rebuildChat()}};
 $('#del').onclick=function(){if(!armed){this.textContent='تأكيد الحذف؟';armed=setTimeout(()=>{armed=0;this.textContent='حذف'},3000);return}
 clearTimeout(armed);armed=0;this.textContent='حذف';S.projects=S.projects.filter(p=>p.id!==S.cur);if(S.projects.length){S.cur=S.projects[0].id;save();openProject()}else newProject()};
+briefEl.oninput=()=>{const p=P();if(p){p.brief=briefEl.value;save()}};
 inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(!busy)send(inp.value)}};
 $('#dl').onclick=()=>{const p=P();if(p&&p.html)downloadHtml((p.name.replace(/[^\w؀-ۿ -]/g,'').trim()||'my-app')+'.html',inject(p.html,FALL));};
 

@@ -247,9 +247,19 @@ const BUILD_SYSTEM = [
   'load saved data at startup and call set after every change.',
   'If the app has several screens or pages, build them as views inside the same file with in-app navigation (tabs or sidebar).',
   'If a CURRENT APP is given, apply the change to it and return the full updated file.',
-  'Output format: 1-2 short sentences in the user\'s language describing what you built or changed,',
-  'then the complete file in a single ```html fence, and nothing after it.',
+  'Change only what the request asks for; keep everything else (layout, colors, features, data keys) exactly as it is.',
+  'PROJECT MEMORY: a PROJECT BRIEF may be given. It is the project\'s long-term memory: purpose, audience,',
+  'design choices, screens, data keys, and decisions the user made. Follow it. Do not undo a decision listed in it',
+  'unless the CHANGE REQUEST explicitly asks for that.',
+  'After every build or change, return an updated brief: concise Markdown in the user\'s language, at most 25 short bullet lines,',
+  'under these headings: الهدف, التصميم, الشاشات والميزات, البيانات المحفوظة, قرارات المستخدم.',
+  'Keep earlier user decisions, add new ones, remove only what is no longer true. No code in the brief.',
+  'Output format, in this exact order: 1-2 short sentences in the user\'s language describing what you built or changed;',
+  'then the updated brief in a single ```brief fence; then the complete file in a single ```html fence; nothing after it.',
 ].join(' ');
+
+// حد أعلى لحجم ملف المعرفة حتى لا يتضخم ويستهلك الرموز
+const BRIEF_MAX = 4000;
 
 async function callAnthropic(messages, system) {
   if (!API_KEY) {
@@ -335,13 +345,16 @@ async function callAI(provider, messages, system) {
 
 app.post('/api/build', checkAccess, async (req, res) => {
   try {
-    const { prompt, currentHtml, provider } = req.body || {};
+    const { prompt, currentHtml, provider, brief } = req.body || {};
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'bad_request' });
     }
-    const userMsg = (currentHtml && typeof currentHtml === 'string'
-      ? `CURRENT APP:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nCHANGE REQUEST: `
-      : 'APP REQUEST: ') + prompt;
+    const briefText = typeof brief === 'string' ? brief.trim().slice(0, BRIEF_MAX) : '';
+    const userMsg =
+      (briefText ? `PROJECT BRIEF:\n${briefText}\n\n` : '') +
+      (currentHtml && typeof currentHtml === 'string'
+        ? `CURRENT APP:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nCHANGE REQUEST: `
+        : 'APP REQUEST: ') + prompt;
     const text = await callAI(provider, [{ role: 'user', content: userMsg }], BUILD_SYSTEM);
     res.json({ text });
   } catch (e) {
