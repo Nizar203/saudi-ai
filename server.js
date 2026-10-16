@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import domainsRouter from './domains.js';
 import saudiRouter from './saudi-engine.js';
+import { store, storageKind } from './store.js';
 import { callGemini, generateImage, geminiEnabled, GEMINI_MODEL, IMAGE_MODEL } from './gemini.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -228,6 +229,101 @@ const limiter = rateLimit({
 // بيع الدومينات: متاح للزوار بلا تسجيل دخول، وخارج حد الطلبات العام
 // (البحث رخيص ومخزّن مؤقتاً، ولوحة المدير محمية برمز DOMAINS_ADMIN_TOKEN)
 app.use('/api/domains', domainsRouter);
+
+// ---------- مشاريع المستخدم على الخادم (تتطلب تسجيل الدخول بجوجل) ----------
+const projectsLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 1500, standardHeaders: true, legacyHeaders: false, message: { error: 'rate_limited' } });
+function requireUser(req, res, next) {
+  if (!GOOGLE_ENABLED) return res.status(409).json({ error: 'no_accounts', message: 'الحفظ على الخادم يتطلب تفعيل تسجيل الدخول بجوجل.' });
+  const email = getSessionEmail(req);
+  if (!email || !isAllowed(email)) return res.status(401).json({ error: 'unauthorized' });
+  req.userEmail = email;
+  next();
+}
+const ID_RE = /^[a-z0-9]{1,24}$/i;
+const jsonSize = (v) => Buffer.byteLength(JSON.stringify(v ?? null));
+function cleanProject(b) {
+  const p = {
+    name: typeof b.name === 'string' ? b.name.slice(0, 80) : 'مشروع',
+    html: typeof b.html === 'string' ? b.html : '',
+    brief: typeof b.brief === 'string' ? b.brief.slice(0, 8000) : '',
+    log: Array.isArray(b.log) ? b.log.slice(-400).filter((m) => m && typeof m.t === 'string').map((m) => ({ c: m.c === 'u' ? 'u' : 'a', t: m.t.slice(0, 20000) })) : [],
+    data: b.data && typeof b.data === 'object' && !Array.isArray(b.data) ? b.data : {},
+  };
+  if (p.html.length > 3_000_000 || jsonSize(p.data) > 2_000_000) return null;
+  return p;
+}
+const storeErr = (res, e) => {
+  if (e.code === 'limit') return res.status(403).json({ error: 'limit', message: e.message });
+  console.error('[store]', e.message);
+  res.status(503).json({ error: 'storage_error', message: 'تعذّر الوصول إلى قاعدة البيانات، حاول بعد قليل.' });
+};
+
+app.get('/api/me', (req, res) => {
+  const email = GOOGLE_ENABLED ? getSessionEmail(req) : null;
+  res.json({ email: email && isAllowed(email) ? email : null, storage: GOOGLE_ENABLED && email ? 'server' : 'local' });
+});
+const projects = express.Router();
+projects.use(projectsLimiter, requireUser);
+projects.get('/', async (req, res) => {
+  try { res.json({ projects: await store.list(req.userEmail) }); } catch (e) { storeErr(res, e); }
+});
+projects.get('/:id', async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'bad_request' });
+  try {
+    const p = await store.get(req.userEmail, req.params.id);
+    p ? res.json(p) : res.status(404).json({ error: 'not_found' });
+  } catch (e) { storeErr(res, e); }
+});
+projects.put('/:id', async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'bad_request' });
+  const p = cleanProject(req.body || {});
+  if (!p) return res.status(413).json({ error: 'too_large', message: 'المشروع أكبر من الحد المسموح.' });
+  try { await store.put(req.userEmail, req.params.id, p); res.json({ ok: true }); } catch (e) { storeErr(res, e); }
+});
+projects.delete('/:id', async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'bad_request' });
+  try { await store.del(req.userEmail, req.params.id); res.json({ ok: true }); } catch (e) { storeErr(res, e); }
+});
+projects.post('/:id/publish', async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'bad_request' });
+  try {
+    const slug = await store.publish(req.userEmail, req.params.id);
+    if (!slug) return res.status(404).json({ error: 'not_found', message: 'احفظ المشروع أولاً.' });
+    res.json({ slug, url: `${getOrigin(req)}/p/${slug}` });
+  } catch (e) { storeErr(res, e); }
+});
+projects.delete('/:id/publish', async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'bad_request' });
+  try { await store.unpublish(req.userEmail, req.params.id); res.json({ ok: true }); } catch (e) { storeErr(res, e); }
+});
+app.use('/api/projects', projects);
+
+// ---------- التطبيقات المنشورة برابط عام ----------
+// تُعرض في وضع "معزول" (sandbox) حتى لا يستطيع كود التطبيق المنشور الوصول لحسابات زوّار الموقع.
+// لذلك بيانات التطبيق المنشور تبقى في ذاكرة الصفحة فقط حالياً.
+const PUB_SHIM = '<script>window.appDB=window.appDB||(function(){var m={};function ls(){try{return window.localStorage}catch(e){return null}}' +
+  'return{get:function(k,f){try{var s=ls(),v=s&&s.getItem("appdb:"+k);if(v!=null)return JSON.parse(v)}catch(e){}return k in m?m[k]:f},' +
+  'set:function(k,v){m[k]=v;try{var s=ls();s&&s.setItem("appdb:"+k,JSON.stringify(v))}catch(e){}}}})()<\/script>';
+const PUB_BADGE = '<a href="/" target="_blank" rel="noopener" style="position:fixed;bottom:10px;left:10px;z-index:2147483647;' +
+  'font:600 12px system-ui,sans-serif;background:#006c35;color:#fff;padding:6px 10px;border-radius:99px;text-decoration:none;opacity:.9">صُنع بـ سعودي AI</a>';
+app.get('/p/:slug', async (req, res) => {
+  if (!/^[a-z0-9]{6,20}$/.test(req.params.slug)) return res.status(404).send('Not found');
+  try {
+    const p = await store.getPublished(req.params.slug);
+    if (!p) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><p style="font-family:sans-serif;text-align:center;margin-top:20vh">هذا التطبيق غير منشور أو أُلغي نشره.</p>');
+    let html = p.html;
+    html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + PUB_SHIM) : PUB_SHIM + html;
+    html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, PUB_BADGE + '</body>') : html + PUB_BADGE;
+    res.set({
+      'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads',
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'public, max-age=60',
+    }).type('html').send(html);
+  } catch (e) {
+    console.error('[publish]', e.message);
+    res.status(503).send('تعذّر تحميل التطبيق، حاول بعد قليل.');
+  }
+});
 
 app.use('/api/', limiter);
 
@@ -492,6 +588,7 @@ app.get('/api/health', (req, res) => {
     hasOpenAIKey: OPENAI_ENABLED,
     openaiModel: OPENAI_MODEL,
     hasGeminiKey: geminiEnabled(),
+    storage: storageKind,
     geminiModel: GEMINI_MODEL,
     imageModel: IMAGE_MODEL,
     accessProtected: !!ACCESS_CODE || GOOGLE_ENABLED,
@@ -499,6 +596,8 @@ app.get('/api/health', (req, res) => {
     rateLimitPerHour: RATE_LIMIT_PER_HOUR,
   });
 });
+
+if (storageKind === 'file') console.warn('[معلومة] DATABASE_URL غير مضبوط — المشاريع تُحفظ في ملف محلي، وقد تُمسح عند إعادة النشر على Render المجاني.');
 
 app.listen(PORT, () => {
   console.log(`سعودي AI يعمل على المنفذ ${PORT}`);

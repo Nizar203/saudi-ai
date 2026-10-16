@@ -95,7 +95,16 @@ background-image:radial-gradient(var(--line) 1px,transparent 1px);background-siz
 .bar [data-v]{border:0;background:transparent;color:var(--mute);padding:6px 12px}
 .bar [data-v].on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(19,32,25,.12)}
 .bar .sp{flex:1}
-#dl{background:var(--panel)}
+#dl,#pub{background:var(--panel)}
+#sync{font-size:.8rem;color:var(--mute);white-space:nowrap}
+#sync.err{color:var(--danger)}
+#pubbar{display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:0 16px 10px;padding:8px 12px;border-radius:12px;background:var(--accent-soft);font-size:.86rem}
+#pubbar.show{display:flex}
+#pubbar a{color:var(--accent);direction:ltr;overflow-wrap:anywhere;font-weight:600}
+#pubbar button{font-size:.8rem;padding:3px 10px}
+#who{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--mute)}
+#who a{color:var(--mute)}
+@media (max-width:800px){#who{display:none}}
 #frame,#code,#brief{flex:1;margin:0 16px 16px;border-radius:14px;border:1px solid var(--line);box-shadow:0 10px 30px -18px rgba(19,32,25,.45)}
 #frame{width:calc(100% - 32px);background:#fff}
 #code{padding:14px;overflow:auto;direction:ltr;text-align:left;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;background:var(--panel)}
@@ -140,13 +149,14 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <button data-m="image">صور</button>
 <a href="/domains.html">دومينات</a>
 </nav>
+<div id="who" hidden><span id="whoMail" dir="ltr"></span><a href="/auth/logout">خروج</a></div>
 </header>
 <div class="sadu" aria-hidden="true"></div>
 <div id="banner"></div>
 <div id="toolbar">
 <div id="enginebar"><span>المحرك</span><div class="seg" id="engineSeg"><button data-e="anthropic" class="on">Claude</button><button data-e="openai">ChatGPT</button><button data-e="gemini">Gemini</button><button data-e="saudi" title="نموذج ALLaM العربي المفتوح من سدايا، للمحادثة فقط">ALLaM</button></div></div>
 <div id="imgbar"><span>المقاس</span><select id="aspect" aria-label="مقاس الصورة"><option value="1:1">مربع</option><option value="9:16">ستوري / جوال</option><option value="16:9">عريض</option><option value="4:5">منشور</option></select><button id="up">رفع صورة</button><input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden></div>
-<div id="projbar"><select id="proj" aria-label="المشروع"></select><button id="new"></button><button id="del">حذف</button></div>
+<div id="projbar"><select id="proj" aria-label="المشروع"></select><button id="new"></button><button id="del">حذف</button><span id="sync" aria-live="polite"></span></div>
 </div>
 <main>
 <section id="chatp">
@@ -183,8 +193,10 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <button data-v="code">الكود</button>
 <button data-v="brief" title="ذاكرة المشروع: يقرؤها الذكاء الاصطناعي قبل كل تعديل">ملف المشروع</button>
 <span class="sp"></span>
+<button id="pub" disabled>نشر برابط</button>
 <button id="dl" disabled>تحميل HTML</button>
 </div>
+<div id="pubbar"><span>منشور على:</span><a id="pubUrl" target="_blank" rel="noopener"></a><button id="pubCopy">نسخ</button><button id="pubOff">إلغاء النشر</button></div>
 <iframe id="frame" sandbox="allow-scripts allow-forms allow-modals" title="preview"></iframe>
 <pre id="code" hidden></pre>
 <p class="brief-note" id="briefNote" hidden>هذه ذاكرة المشروع: يقرؤها الذكاء الاصطناعي قبل كل تعديل ويحدّثها بعده. عدّلها بنفسك لتثبيت أي قرار تريده.</p>
@@ -202,15 +214,43 @@ let S={projects:[],cur:null,chat:[],provider:'anthropic'},mode='build',busy=fals
 const P=()=>S.projects.find(p=>p.id===S.cur);
 const hist=()=>S.chat.map(m=>({role:m.c==='u'?'user':'assistant',content:m.t}));
 function load(){try{const j=localStorage.getItem('studio:v1');if(j)S=Object.assign(S,JSON.parse(j))}catch(e){}}
-function save(){clearTimeout(t0);t0=setTimeout(()=>{try{localStorage.setItem('studio:v1',JSON.stringify(S))}catch(e){}},300)}
-function lock(b){busy=b;$('#send').textContent=b?'إيقاف':'إرسال';['proj','new','del'].forEach(i=>$('#'+i).disabled=b);briefEl.readOnly=b}
+function save(){clearTimeout(t0);t0=setTimeout(()=>{try{localStorage.setItem('studio:v1',JSON.stringify(S))}catch(e){}},300);if(remote)schedSync()}
+// ---------- الحفظ على الخادم ----------
+let remote=false,sent={},tS=null,syncing=false;
+const sig=p=>JSON.stringify([p.name,p.html,p.brief,p.log,p.data]);
+const worth=p=>!p._stub&&(p.html||p.log.length);
+function setSync(t,err){const e=$('#sync');e.textContent=t;e.classList.toggle('err',!!err)}
+function schedSync(){clearTimeout(tS);tS=setTimeout(syncNow,800)}
+async function syncNow(){if(syncing){schedSync();return}syncing=true;let failed=false;
+for(const p of S.projects){if(!worth(p))continue;const g=sig(p);if(sent[p.id]===g)continue;setSync('جارٍ الحفظ…');
+try{await jfetch('/api/projects/'+p.id,'PUT',{name:p.name,html:p.html,brief:p.brief||'',log:p.log,data:p.data});sent[p.id]=g}catch(e){failed=true;setSync(e.code==='limit'?e.message:'⚠️ تعذّر الحفظ، سنعيد المحاولة',true)}}
+syncing=false;if(failed)tS=setTimeout(syncNow,15000);else setSync('✓ محفوظ في حسابك')}
+async function jfetch(path,method,body){const r=await fetch(path,{method,headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+let j={};try{j=await r.json()}catch(e){}if(!r.ok){const err=new Error(j.message||j.error||('HTTP '+r.status));err.code=j.error;throw err}return j}
+async function initRemote(){let me;try{me=await jfetch('/api/me','GET')}catch(e){return}
+if(!me||me.storage!=='server')return;remote=true;$('#who').hidden=false;$('#whoMail').textContent=me.email;
+let list;try{list=(await jfetch('/api/projects','GET')).projects}catch(e){setSync('⚠️ تعذّر تحميل مشاريعك من الحساب',true);return}
+const local=new Map(S.projects.map(p=>[p.id,p]));const merged=[];
+for(const r of list){const l=local.get(r.id);if(l){l.slug=r.slug;merged.push(l);local.delete(r.id)}else merged.push({id:r.id,name:r.name,slug:r.slug,_stub:true,html:'',log:[],data:{},brief:''})}
+// المشاريع الموجودة في المتصفح فقط تُرفع للحساب تلقائياً
+for(const l of local.values())if(worth(l))merged.unshift(l);
+S.projects=merged;if(!P())S.cur=S.projects.length?S.projects[0].id:null;
+if(!S.projects.length)newProject();else{save();openProject()}setSync('✓ محفوظ في حسابك')}
+function lock(b){busy=b;const pb=document.getElementById('pub');if(pb)pb.disabled=b||!(P()&&P().html);$('#send').textContent=b?'إيقاف':'إرسال';['proj','new','del'].forEach(i=>$('#'+i).disabled=b);briefEl.readOnly=b}
 const inject=(h,s)=>/<head[^>]*>/i.test(h)?h.replace(/<head[^>]*>/i,m=>m+s):s+h;
 const FALL='<script>window.appDB=window.appDB||{get:function(k,f){try{var v=localStorage.getItem("appdb:"+k);return v==null?f:JSON.parse(v)}catch(e){return f}},set:function(k,v){try{localStorage.setItem("appdb:"+k,JSON.stringify(v))}catch(e){}}}<\/script>';
-const shim=d=>'<script>window.appDB=(function(){var c='+JSON.stringify(d).replace(/</g,'\\u003c')+';return{get:function(k,f){return k in c?c[k]:f},set:function(k,v){c[k]=v;parent.postMessage({appdb:1,k:k,v:v},"*")}}})()<\/script>';
-addEventListener('message',e=>{const d=e.data,p=P();if(e.source===frame.contentWindow&&d&&d.appdb&&p){p.data[d.k]=d.v;save()}});
+const ERRSHIM='<script>(function(){var n=0;function s(m){if(n++<5)parent.postMessage({apperr:String(m).slice(0,400)},"*")}addEventListener("error",function(e){s((e.message||"error")+(e.lineno?" (سطر "+e.lineno+")":""))});addEventListener("unhandledrejection",function(e){s("Promise: "+((e.reason&&e.reason.message)||e.reason))})})()<\/script>';
+let appErrs=[];
+const shim=d=>ERRSHIM+'<script>window.appDB=(function(){var c='+JSON.stringify(d).replace(/</g,'\\u003c')+';return{get:function(k,f){return k in c?c[k]:f},set:function(k,v){c[k]=v;parent.postMessage({appdb:1,k:k,v:v},"*")}}})()<\/script>';
+addEventListener('message',e=>{const d=e.data,p=P();if(e.source!==frame.contentWindow||!d)return;if(d.apperr){appErrs.push(d.apperr);return}if(d.appdb&&p){p.data[d.k]=d.v;save()}});
 function fillSel(){const s=$('#proj');s.textContent='';S.projects.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.name;s.appendChild(o)});s.value=S.cur}
-function openProject(){const p=P();briefEl.value=p.brief||'';logs.build.textContent='';add('a',W.build,logs.build);p.log.forEach(m=>add(m.c,m.t,logs.build));
-if(p.html)render();else{frame.srcdoc='';codeEl.textContent='';$('#empty').hidden=false;$('#dl').disabled=true}fillSel()}
+async function openProject(){const p=P();if(!p)return;
+if(p._stub){logs.build.textContent='';add('a','جارٍ تحميل المشروع…',logs.build);fillSel();
+try{const f=await jfetch('/api/projects/'+p.id,'GET');Object.assign(p,{name:f.name,html:f.html,brief:f.brief,log:f.log||[],data:f.data||{},slug:f.slug});delete p._stub;sent[p.id]=sig(p);save()}
+catch(e){logs.build.textContent='';add('a','⚠️ تعذّر تحميل المشروع: '+e.message,logs.build);return}
+if(P()!==p)return}
+briefEl.value=p.brief||'';logs.build.textContent='';add('a',W.build,logs.build);p.log.forEach(m=>add(m.c,m.t,logs.build));
+if(p.html)render();else{frame.srcdoc='';codeEl.textContent='';$('#empty').hidden=false;$('#dl').disabled=true;syncPub()}fillSel()}
 function rebuildChat(){logs.chat.textContent='';add('a',W.chat,logs.chat);S.chat.forEach(m=>add(m.c,m.t,logs.chat))}
 function newProject(){const p={id:Date.now().toString(36),name:NEWN,html:'',log:[],data:{},brief:''};S.projects.unshift(p);S.cur=p.id;save();openProject()}
 
@@ -219,7 +259,7 @@ function parse(t){let brief=null;const bm=/\x60\x60\x60brief[ \t]*\n([\s\S]*?)\x
 const o=parse0(t);o.brief=brief;return o}
 function parse0(t){const m=/\x60\x60\x60(?:html)?[ \t]*\n/.exec(t);if(!m)return{msg:t.trim(),code:null};
 let c=t.slice(m.index+m[0].length);const j=c.lastIndexOf(F);if(j>=0)c=c.slice(0,j);return{msg:t.slice(0,m.index).trim(),code:c.trim()}}
-function render(){const p=P();frame.srcdoc=inject(p.html,shim(p.data));codeEl.textContent=p.html;$('#empty').hidden=true;$('#dl').disabled=false}
+function render(){const p=P();appErrs=[];syncPub();frame.srcdoc=inject(p.html,shim(p.data));codeEl.textContent=p.html;$('#empty').hidden=true;$('#dl').disabled=false}
 function setMode(m){mode=m;D.dataset.mode=m;document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));syncEngine();
 Object.keys(logs).forEach(k=>logs[k].hidden=m!==k);$('#chips').hidden=m!=='build';$('#chipsChat').hidden=m!=='chat';$('#chipsImage').hidden=m!=='image';inp.placeholder=hints[m];$('#new').textContent=m==='build'?'＋ مشروع جديد':m==='image'?'＋ صورة جديدة':'＋ محادثة جديدة';syncBase()}
 
@@ -269,10 +309,10 @@ sb.title=!saudiReady?'محرك ALLaM غير مفعّل بعد على الخاد�
 if(S.provider==='saudi'&&sb.disabled)S.provider='anthropic';
 document.querySelectorAll('#engineSeg button').forEach(b=>b.classList.toggle('on',b.dataset.e===S.provider))}
 
-async function send(text){
+async function send(text,opts){opts=opts||{};
 text=text.trim();if(!text||busy)return;
-const l=logs[mode],m=mode,pr=P();
-add('u',text,l);inp.value='';
+const l=logs[mode],m=mode,pr=P();let built=false;
+add('u',opts.label||text,l);if(!opts.auto)inp.value='';
 lock(true);ctrl=new AbortController();
 const bub=add('a','جارٍ التفكير…',l);
 try{
@@ -285,7 +325,7 @@ bub.textContent=r.text;S.chat.push({c:'u',t:text},{c:'a',t:r.text});save();
 }else{
 const r=await callBuild(text,pr.html||undefined,pr.brief||undefined,ctrl.signal,t=>{const i=t.indexOf(F);bub.textContent=(i>=0?t.slice(0,i).trim()+'\n\n':'')+'✍️ جارٍ كتابة التطبيق… '+t.length.toLocaleString('ar')+' حرف'});
 const o=parse(r.text);
-if(o.code&&/<\/html>/i.test(o.code)){pr.html=o.code;if(o.brief){pr.brief=o.brief;if(P()===pr)briefEl.value=o.brief}render();D.dataset.pane='preview';syncTabs();pr.log.push({c:'u',t:text},{c:'a',t:(o.msg||'تم بناء التطبيق.')});if(pr.name===NEWN)pr.name=text.slice(0,28);save();fillSel();bub.textContent=(o.msg||'تم بناء التطبيق.')+'\n\n✅ المعاينة جاهزة، اطلب أي تعديل.'}
+if(o.code&&/<\/html>/i.test(o.code)){pr.html=o.code;if(o.brief){pr.brief=o.brief;if(P()===pr)briefEl.value=o.brief}render();D.dataset.pane='preview';syncTabs();pr.log.push({c:'u',t:opts.label||text},{c:'a',t:(o.msg||'تم بناء التطبيق.')});built=true;if(pr.name===NEWN)pr.name=text.slice(0,28);save();fillSel();bub.textContent=(o.msg||'تم بناء التطبيق.')+'\n\n✅ المعاينة جاهزة، اطلب أي تعديل.'}
 else bub.textContent=(o.msg||r.text)+'\n\n⚠️ لم يكتمل الكود (الناتج طويل). جرّب طلبًا أبسط أو على خطوات.';
 }
 }catch(e){
@@ -297,7 +337,11 @@ S.provider==='saudi'&&e&&e.message?e.message:
 c==='missing_api_key'&&m==='image'?'الخادم لم يُضبط بمفتاح Gemini بعد (GEMINI_API_KEY).':c==='missing_api_key'&&S.provider==='gemini'?'الخادم لم يُضبط بمفتاح Gemini بعد (GEMINI_API_KEY).':c==='missing_api_key'?(S.provider==='openai'?'الخادم لم يُضبط بمفتاح OpenAI API بعد (OPENAI_API_KEY).':'الخادم لم يُضبط بمفتاح Anthropic API بعد.'):
 'حدث خطأ: '+((e&&e.message)||e);
 }
-lock(false);
+lock(false);syncPub();
+// فحص تلقائي: إن ظهرت أخطاء في التطبيق بعد البناء، نطلب إصلاحها مرة واحدة
+if(built&&!opts.auto&&P()===pr){await new Promise(r=>setTimeout(r,2500));
+if(appErrs.length&&!busy&&P()===pr){const errs=[...new Set(appErrs)].slice(0,5);
+send('The app shows these runtime errors in the browser console. Fix them without changing anything else. Reply in Arabic.\n- '+errs.join('\n- '),{auto:true,label:'🔧 إصلاح تلقائي: وجدت '+errs.length+' خطأ في التطبيق وأصلحها الآن…'})}}
 }
 function addImage(im,note,prompt){const l=logs.image,d=document.createElement('div');d.className='m a img';
 const img=document.createElement('img');img.src='data:'+im.mime+';base64,'+im.data;img.alt=prompt;d.appendChild(img);
@@ -311,6 +355,15 @@ function syncBase(){const b=$('#base');b.classList.toggle('show',mode==='image'&
 function loadUpload(f){const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,1536/Math.max(im.width,im.height)),c=document.createElement('canvas');
 c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);
 const u=c.toDataURL('image/jpeg',.9);baseImg={mime:'image/jpeg',data:u.split(',')[1]};syncBase();add('a','تم رفع الصورة. اكتب التعديل الذي تريده عليها.',logs.image)};im.src=fr.result};fr.readAsDataURL(f)}
+function syncPub(){const p=P(),b=$('#pub'),bar=$('#pubbar');b.disabled=!p||!p.html||busy;b.textContent=p&&p.slug?'تحديث النشر':'نشر برابط';
+bar.classList.toggle('show',!!(p&&p.slug));if(p&&p.slug){const u=location.origin+'/p/'+p.slug;$('#pubUrl').href=u;$('#pubUrl').textContent=u}}
+async function publish(){const p=P();if(!p||!p.html)return;
+if(!remote){alert('النشر برابط يتطلب تسجيل الدخول بحساب جوجل حتى يُحفظ تطبيقك على الخادم.');return}
+const b=$('#pub');b.disabled=true;b.textContent='جارٍ النشر…';
+try{clearTimeout(tS);await syncNow();const r=await jfetch('/api/projects/'+p.id+'/publish','POST');p.slug=r.slug;save();syncPub();add('a','🚀 تم النشر. أرسل الرابط لعملائك: '+r.url,logs.build)}
+catch(e){alert('تعذّر النشر: '+e.message);syncPub()}}
+async function unpublish(){const p=P();if(!p||!p.slug)return;if(!confirm('سيتوقف الرابط عن العمل لكل من لديه. متأكد؟'))return;
+try{await jfetch('/api/projects/'+p.id+'/publish','DELETE');p.slug=null;save();syncPub()}catch(e){alert('تعذّر إلغاء النشر: '+e.message)}}
 function syncTabs(){document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.p===D.dataset.pane))}
 
 document.querySelectorAll('#modeSeg button').forEach(b=>b.onclick=()=>setMode(b.dataset.m));
@@ -318,13 +371,14 @@ document.querySelectorAll('#engineSeg button').forEach(b=>b.onclick=()=>setEngin
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{D.dataset.pane=b.dataset.p;syncTabs()});
 document.querySelectorAll('.bar [data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v;frame.hidden=v!=='preview';codeEl.hidden=v!=='code';briefEl.hidden=v!=='brief';$('#briefNote').hidden=v!=='brief';$('#empty').style.display=v==='brief'?'none':'';
 document.querySelectorAll('.bar [data-v]').forEach(x=>x.classList.toggle('on',x===b))});
+$('#pub').onclick=publish;$('#pubOff').onclick=unpublish;$('#pubCopy').onclick=()=>{const u=$('#pubUrl').href;(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>{$('#pubCopy').textContent='تم النسخ';setTimeout(()=>$('#pubCopy').textContent='نسخ',1500)}).catch(()=>prompt('انسخ الرابط:',u))};
 $('#up').onclick=()=>$('#file').click();$('#file').onchange=e=>{const f=e.target.files[0];if(f)loadUpload(f);e.target.value=''};$('#baseX').onclick=()=>{baseImg=null;syncBase()};
 document.querySelectorAll('#chips button,#chipsChat button,#chipsImage button').forEach(b=>b.onclick=()=>send(b.textContent));
 $('#send').onclick=()=>busy?ctrl.abort():send(inp.value);
 $('#proj').onchange=e=>{S.cur=e.target.value;save();openProject()};
 $('#new').onclick=()=>{if(mode==='build')newProject();else if(mode==='image'){baseImg=null;syncBase();logs.image.textContent='';add('a',W.image,logs.image)}else{S.chat=[];save();rebuildChat()}};
 $('#del').onclick=function(){if(!armed){this.textContent='تأكيد الحذف؟';armed=setTimeout(()=>{armed=0;this.textContent='حذف'},3000);return}
-clearTimeout(armed);armed=0;this.textContent='حذف';S.projects=S.projects.filter(p=>p.id!==S.cur);if(S.projects.length){S.cur=S.projects[0].id;save();openProject()}else newProject()};
+clearTimeout(armed);armed=0;this.textContent='حذف';const gone=S.cur;if(remote)jfetch('/api/projects/'+gone,'DELETE').catch(()=>{});delete sent[gone];S.projects=S.projects.filter(p=>p.id!==gone);if(S.projects.length){S.cur=S.projects[0].id;save();openProject()}else newProject()};
 briefEl.oninput=()=>{const p=P();if(p){p.brief=briefEl.value;save()}};
 inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(!busy)send(inp.value)}};
 $('#dl').onclick=()=>{const p=P();if(p&&p.html)downloadHtml((p.name.replace(/[^\w؀-ۿ -]/g,'').trim()||'my-app')+'.html',inject(p.html,FALL));};
@@ -332,7 +386,7 @@ $('#dl').onclick=()=>{const p=P();if(p&&p.html)downloadHtml((p.name.replace(/[^\
 add('a','أهلًا! صف لي التطبيق الذي تريده وسأبنيه وأعرضه لك فورًا، ثم عدّل عليه بالمحادثة مثل: «غيّر الألوان» أو «أضف صفحة إحصائيات».',logs.build);
 add('a','جرّب إحدى الأدوات السريعة بالأسفل، أو اكتب سؤالك مباشرة.',logs.chat);
 add('a','صف الصورة التي تريدها وسأصممها لك عبر Nano Banana من جوجل. بعدها اطلب أي تعديل عليها، أو ارفع صورتك وعدّل عليها.',logs.image);
-W={build:logs.build.firstChild.textContent,chat:logs.chat.firstChild.textContent,image:logs.image.firstChild.textContent};load();P()?openProject():newProject();rebuildChat();setMode('build');
+W={build:logs.build.firstChild.textContent,chat:logs.chat.firstChild.textContent,image:logs.image.firstChild.textContent};load();P()?openProject():newProject();rebuildChat();setMode('build');initRemote();
 setEngine(S.provider||'anthropic');
 
 fetch('/api/saudi/status').then(r=>r.ok?r.json():{}).then(j=>{saudiReady=!!j.enabled;syncEngine()}).catch(()=>{});
