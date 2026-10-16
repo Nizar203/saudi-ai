@@ -19,7 +19,7 @@
 .hero{position:relative;overflow:hidden;background:radial-gradient(90% 70% at 50% 0%,#00803f,var(--deep) 62%,#002312);color:#fff;padding:56px 0 110px;text-align:center}
 .hero .art{position:absolute;inset:0;width:100%;height:100%;z-index:0;opacity:.45}
 .hero .wrap{position:relative;z-index:1;max-width:860px;display:block}
-.mind{display:grid;justify-items:center;margin:-60px auto -40px}
+.mind{display:grid;justify-items:center;margin:-70px auto -84px;position:relative;z-index:-1}
 .mind svg{width:min(420px,92vw);height:auto;overflow:visible}
 .mind .ring{transform-origin:210px 210px;animation:spin 60s linear infinite}
 .mind .nodes circle{animation:blink 3.2s ease-in-out infinite}
@@ -29,11 +29,11 @@
 @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
 @media (prefers-reduced-motion:reduce){.mind .ring,.mind .nodes circle,.mind .star{animation:none}}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 10px;border-radius:99px;border:1px solid rgba(214,169,71,.45);background:rgba(0,0,0,.18);font-size:.92rem;color:rgba(255,255,255,.9);margin-bottom:26px}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 10px;border-radius:99px;border:1px solid rgba(214,169,71,.45);background:rgba(0,0,0,.18);font-size:.92rem;color:rgba(255,255,255,.9);margin-bottom:16px;position:relative}
 .pill svg{width:18px;height:18px}
-.hero h1{font:700 clamp(2.5rem,7vw,4.8rem)/1.16 "Reem Kufi","IBM Plex Sans Arabic",sans-serif;margin:0 0 18px}
+.hero h1{font:700 clamp(2.5rem,7vw,4.8rem)/1.16 "Reem Kufi","IBM Plex Sans Arabic",sans-serif;margin:0 0 12px}
 .hero h1 span{display:block;color:var(--gold)}
-.hero .lead{color:rgba(255,255,255,.82);font-size:1.2rem;max-width:48ch;margin:0 auto 34px}
+.hero .lead{color:rgba(255,255,255,.82);font-size:1.2rem;max-width:48ch;margin:0 auto 26px}
 .ask{position:relative;max-width:720px;margin:0 auto;padding:2px;border-radius:24px;background:conic-gradient(from var(--a,0deg),rgba(214,169,71,.15),#d6a947,rgba(47,179,107,.9),rgba(214,169,71,.15) 60%);animation:turn 8s linear infinite;box-shadow:0 30px 80px -30px rgba(0,0,0,.7),0 0 60px -10px rgba(214,169,71,.35)}
 @property --a{syntax:"<angle>";inherits:false;initial-value:0deg}
 @keyframes turn{to{--a:360deg}}
