@@ -270,7 +270,7 @@ body[data-mode=build][data-pane=preview] #chatp{display:none}
 <button id="dl" disabled>تحميل HTML</button>
 <button id="pub" disabled>نشر برابط</button>
 </div>
-<div id="pubbar"><span>منشور على:</span><a id="pubUrl" target="_blank" rel="noopener"></a><button id="pubCopy">نسخ</button><button id="pubOff">إلغاء النشر</button></div>
+<div id="pubbar"><span>منشور على:</span><a id="pubUrl" target="_blank" rel="noopener"></a><button id="pubCopy">نسخ</button><button id="pubPin" title="رمز يُطلب قبل فتح التطبيق المنشور ويحمي بياناته">🔒 رمز الدخول</button><button id="pubOff">إلغاء النشر</button></div>
 <div id="fwrap"><iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox" title="preview"></iframe></div>
 <pre id="code" hidden></pre>
 <p class="brief-note" id="briefNote" hidden>هذه ذاكرة المشروع: يقرؤها الذكاء الاصطناعي قبل كل تعديل ويحدّثها بعده. عدّلها بنفسك لتثبيت أي قرار تريده.</p>
@@ -461,8 +461,12 @@ bar.classList.toggle('show',!!(p&&p.slug));if(p&&p.slug){const u=location.origin
 async function publish(){const p=P();if(!p||!p.html)return;
 if(!remote){alert('النشر برابط يتطلب تسجيل الدخول بحساب جوجل حتى يُحفظ تطبيقك على الخادم.');return}
 const b=$('#pub');b.disabled=true;b.textContent='جارٍ النشر…';
-try{clearTimeout(tS);await syncNow();const r=await jfetch('/api/projects/'+p.id+'/publish','POST');p.slug=r.slug;save();syncPub();add('a','🚀 تم النشر. أرسل الرابط لعملائك: '+r.url,logs.build)}
+const first=!p.slug;try{clearTimeout(tS);await syncNow();const r=await jfetch('/api/projects/'+p.id+'/publish','POST');p.slug=r.slug;save();syncPub();add('a','🚀 تم النشر: '+r.url+'\n\nالبيانات التي تُدخل في الرابط المنشور تُحفظ على الخادم ويراها كل من يفتح الرابط.'+(first?'':' (لم تتغير البيانات المحفوظة، فقط شكل التطبيق.)'),logs.build);if(first)setPin(true)}
 catch(e){alert('تعذّر النشر: '+e.message);syncPub()}}
+async function setPin(afterPublish){const p=P();if(!p||!p.slug)return;
+const v=prompt((afterPublish?'تم النشر ✅\n\n':'')+'رمز الدخول (اختياري):\nإن كان تطبيقك يحفظ بيانات خاصة (فواتير، عملاء، مصروفات) ضع رمزاً من 4 خانات أو أكثر، ولن يفتح التطبيق إلا لمن يعرفه.\nاتركه فارغاً ليكون التطبيق مفتوحاً للجميع، أو اكتب رمزاً جديداً لتغييره.','');
+if(v===null)return;try{const r=await jfetch('/api/projects/'+p.id+'/pin','POST',{pin:v.trim()});
+add('a',r.protected?'🔒 تم ضبط رمز الدخول. أعطه فقط لمن تريد أن يستخدم التطبيق.':'🔓 التطبيق المنشور مفتوح الآن لكل من لديه الرابط.',logs.build)}catch(e){alert('تعذّر حفظ الرمز: '+e.message)}}
 async function unpublish(){const p=P();if(!p||!p.slug)return;if(!confirm('سيتوقف الرابط عن العمل لكل من لديه. متأكد؟'))return;
 try{await jfetch('/api/projects/'+p.id+'/publish','DELETE');p.slug=null;save();syncPub()}catch(e){alert('تعذّر إلغاء النشر: '+e.message)}}
 // ---------- القوالب الجاهزة ----------
@@ -507,7 +511,7 @@ dev.onclick=()=>{mode=mode==='mob'?'desk':'mob';try{localStorage.setItem('sa:dev
 if(window.ResizeObserver)new ResizeObserver(fit).observe(wrap);addEventListener('resize',fit);fit()})();
 $('#tplBtn').onclick=()=>{closeMenu();openTpl()};$('#menuBtn').onclick=()=>D.classList.toggle('menu');$('#scrim').onclick=closeMenu;
 $('#tplClose').onclick=()=>$('#tpl').close();$('#tplBack').onclick=openTpl;$('#tplForm').onsubmit=submitTpl;
-$('#pub').onclick=publish;$('#pubOff').onclick=unpublish;$('#pubCopy').onclick=()=>{const u=$('#pubUrl').href;(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>{$('#pubCopy').textContent='تم النسخ';setTimeout(()=>$('#pubCopy').textContent='نسخ',1500)}).catch(()=>prompt('انسخ الرابط:',u))};
+$('#pub').onclick=publish;$('#pubPin').onclick=()=>setPin(false);$('#pubOff').onclick=unpublish;$('#pubCopy').onclick=()=>{const u=$('#pubUrl').href;(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>{$('#pubCopy').textContent='تم النسخ';setTimeout(()=>$('#pubCopy').textContent='نسخ',1500)}).catch(()=>prompt('انسخ الرابط:',u))};
 $('#up').onclick=()=>$('#file').click();$('#file').onchange=e=>{const f=e.target.files[0];if(f)loadUpload(f);e.target.value=''};$('#baseX').onclick=()=>{baseImg=null;syncBase()};
 document.querySelectorAll('#chips button,#chipsChat button,#chipsImage button').forEach(b=>b.onclick=()=>send(b.textContent));
 $('#send').onclick=()=>busy?ctrl.abort():send(inp.value);

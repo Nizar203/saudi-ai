@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 import domainsRouter from './domains.js';
 import saudiRouter from './saudi-engine.js';
 import { store, storageKind } from './store.js';
+import { domainNotes } from './playbooks.js';
 import { callGemini, generateImage, geminiEnabled, GEMINI_MODEL, IMAGE_MODEL } from './gemini.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,7 +21,10 @@ const app = express();
 app.set('trust proxy', true); // عشان يعرف أن الاتصال https خلف خادم Render
 
 const API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
+// بناء التطبيقات يستحق نموذجاً أقوى وتفكيراً أعمق من المحادثة العادية
+const BUILD_MODEL = process.env.ANTHROPIC_BUILD_MODEL || 'claude-opus-5-5';
+const BUILD_EFFORT = process.env.ANTHROPIC_BUILD_EFFORT || 'high'; // low | medium | high | xhigh | max
 const ACCESS_CODE = process.env.ACCESS_CODE || '';
 const RATE_LIMIT_PER_HOUR = Number(process.env.RATE_LIMIT_PER_HOUR || 20);
 const PORT = process.env.PORT || 3000;
@@ -301,32 +305,139 @@ projects.delete('/:id/publish', async (req, res) => {
   if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'bad_request' });
   try { await store.unpublish(req.userEmail, req.params.id); res.json({ ok: true }); } catch (e) { storeErr(res, e); }
 });
+// رمز دخول اختياري يحمي بيانات التطبيق المنشور (فارغ = بدون رمز)
+projects.post('/:id/pin', async (req, res) => {
+  if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'bad_request' });
+  const pin = String(req.body?.pin ?? '').trim();
+  if (pin && (pin.length < 4 || pin.length > 64)) return res.status(400).json({ error: 'bad_pin', message: 'الرمز يجب أن يكون من 4 إلى 64 خانة.' });
+  try {
+    const ok = await store.setPin(req.userEmail, req.params.id, pin ? hashPin(pin) : null);
+    ok ? res.json({ ok: true, protected: !!pin }) : res.status(404).json({ error: 'not_found', message: 'احفظ المشروع أولاً.' });
+  } catch (e) { storeErr(res, e); }
+});
 app.use('/api/projects', projects);
 
 // ---------- التطبيقات المنشورة برابط عام ----------
 // تُعرض في وضع "معزول" (sandbox) حتى لا يستطيع كود التطبيق المنشور الوصول لحسابات زوّار الموقع.
-// لذلك بيانات التطبيق المنشور تبقى في ذاكرة الصفحة فقط حالياً.
-const PUB_SHIM = '<script>window.appDB=window.appDB||(function(){var m={};function ls(){try{return window.localStorage}catch(e){return null}}' +
-  'return{get:function(k,f){try{var s=ls(),v=s&&s.getItem("appdb:"+k);if(v!=null)return JSON.parse(v)}catch(e){}return k in m?m[k]:f},' +
-  'set:function(k,v){m[k]=v;try{var s=ls();s&&s.setItem("appdb:"+k,JSON.stringify(v))}catch(e){}}}})()<\/script>';
+// بياناته تُحفظ على الخادم: مشتركة بين كل من يفتح الرابط، أو بين من يعرف رمز الدخول إن ضبطه صاحب التطبيق.
+function hashPin(pin) {
+  const salt = crypto.randomBytes(8).toString('hex');
+  return salt + '$' + crypto.createHash('sha256').update(salt + ':' + pin).digest('hex');
+}
+function checkPin(stored, pin) {
+  const [salt, h] = String(stored || '').split('$');
+  if (!salt || !h) return false;
+  const a = Buffer.from(crypto.createHash('sha256').update(salt + ':' + pin).digest('hex'));
+  const b = Buffer.from(h);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+// رمز وصول مشتق من الرمز المخزّن: يتغيّر تلقائياً (ويُبطل القديم) إذا غيّر صاحب التطبيق رمز الدخول
+const pubToken = (slug, pinStored) => crypto.createHmac('sha256', SESSION_SECRET).update('pub:' + slug + ':' + (pinStored || '')).digest('hex');
+const tokenOk = (slug, pinStored, t) => {
+  const a = Buffer.from(String(t || ''));
+  const b = Buffer.from(pubToken(slug, pinStored));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+const SLUG_RE = /^[a-z0-9]{6,20}$/;
+const KEY_RE = /^[\w.:\-؀-ۿ]{1,100}$/;
+const jsonForScript = (v) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+
+function pubShim(slug, data, token) {
+  return '<script>window.appDB=(function(){var m=' + jsonForScript(data || {}) + ',T=' + JSON.stringify(token) +
+    ',U="/p/' + slug + '/data/",q={},tm={},bad=0;' +
+    'function note(t){try{var d=document.getElementById("__appdb_note");if(!d){d=document.createElement("div");d.id="__appdb_note";' +
+    'd.style.cssText="position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#b42318;color:#fff;font:600 13px system-ui,sans-serif;padding:8px 14px;border-radius:10px";' +
+    '(document.body||document.documentElement).appendChild(d)}d.textContent=t;d.hidden=!t}catch(e){}}' +
+    'function send(k,ka){var b=JSON.stringify({v:q[k]});delete q[k];' +
+    'fetch(U+encodeURIComponent(k),{method:"PUT",headers:{"content-type":"application/json","x-pub-token":T},body:b,keepalive:!!ka&&b.length<60000})' +
+    '.then(function(r){if(!r.ok)throw r;if(bad){bad=0;note("")}}).catch(function(){bad=1;note("⚠️ تعذّر حفظ آخر تعديل، تحقق من الاتصال")})}' +
+    'addEventListener("pagehide",function(){for(var k in q){clearTimeout(tm[k]);send(k,1)}});' +
+    'return{get:function(k,f){return Object.prototype.hasOwnProperty.call(m,k)?m[k]:f},' +
+    'set:function(k,v){m[k]=v;q[k]=v;clearTimeout(tm[k]);tm[k]=setTimeout(function(){send(k)},400)}}})()<\/script>';
+}
 const PUB_BADGE = '<a href="/" target="_blank" rel="noopener" style="position:fixed;bottom:10px;left:10px;z-index:2147483647;' +
   'font:600 12px system-ui,sans-serif;background:#006c35;color:#fff;padding:6px 10px;border-radius:99px;text-decoration:none;opacity:.9">صُنع بـ سعودي AI</a>';
+const escHtml = (t) => String(t || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function gatePage(slug, name, wrong) {
+  return `<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escHtml(name) || 'تطبيق محمي'}</title><meta name="robots" content="noindex">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f5f4;font:16px/1.6 system-ui,"Segoe UI",Tahoma,sans-serif;color:#132019}
+form{background:#fff;padding:28px;border-radius:16px;box-shadow:0 10px 30px -15px rgba(0,0,0,.3);width:min(340px,90vw);text-align:center}
+h1{font-size:1.15rem;margin:0 0 4px}p{margin:0 0 16px;color:#5b6b62;font-size:.9rem}
+input{width:100%;box-sizing:border-box;padding:12px;font-size:1.1rem;border:1px solid #d5ddd8;border-radius:10px;text-align:center;letter-spacing:.2em}
+button{margin-top:12px;width:100%;padding:12px;border:0;border-radius:10px;background:#006c35;color:#fff;font:600 1rem inherit;cursor:pointer}
+.err{color:#b42318;margin-top:10px;font-size:.9rem}</style>
+<form method="post" action="/p/${slug}/unlock"><h1>🔒 ${escHtml(name) || 'تطبيق محمي'}</h1><p>أدخل رمز الدخول الذي أعطاك إياه صاحب التطبيق</p>
+<input name="pin" type="password" inputmode="text" autocomplete="current-password" required autofocus>
+<button>دخول</button>${wrong ? '<div class="err">الرمز غير صحيح</div>' : ''}</form></html>`;
+}
+const pubNoStore = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
+
 app.get('/p/:slug', async (req, res) => {
-  if (!/^[a-z0-9]{6,20}$/.test(req.params.slug)) return res.status(404).send('Not found');
+  const { slug } = req.params;
+  if (!SLUG_RE.test(slug)) return res.status(404).send('Not found');
   try {
-    const p = await store.getPublished(req.params.slug);
+    const p = await store.getPublished(slug);
     if (!p) return res.status(404).type('html').send('<!doctype html><meta charset="utf-8"><p style="font-family:sans-serif;text-align:center;margin-top:20vh">هذا التطبيق غير منشور أو أُلغي نشره.</p>');
+    if (p.pin && !tokenOk(slug, p.pin, parseCookies(req)['pa_' + slug])) {
+      return res.set(pubNoStore).type('html').send(gatePage(slug, p.name, req.query.e === '1'));
+    }
+    const shim = pubShim(slug, p.data, pubToken(slug, p.pin));
     let html = p.html;
-    html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + PUB_SHIM) : PUB_SHIM + html;
+    html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + shim) : shim + html;
     html = /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, PUB_BADGE + '</body>') : html + PUB_BADGE;
     res.set({
+      ...pubNoStore,
       'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads',
-      'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'public, max-age=60',
     }).type('html').send(html);
   } catch (e) {
     console.error('[publish]', e.message);
     res.status(503).send('تعذّر تحميل التطبيق، حاول بعد قليل.');
+  }
+});
+
+// محاولات الرمز محدودة لمنع التخمين
+const unlockLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false,
+  keyGenerator: (req) => (req.ip || '') + ':' + req.params.slug,
+  handler: (req, res) => res.status(429).type('html').send('<!doctype html><meta charset="utf-8"><p style="font-family:sans-serif;text-align:center;margin-top:20vh">محاولات كثيرة، حاول بعد ١٥ دقيقة.</p>') });
+app.post('/p/:slug/unlock', express.urlencoded({ extended: false, limit: '2kb' }), unlockLimiter, async (req, res) => {
+  const { slug } = req.params;
+  if (!SLUG_RE.test(slug)) return res.status(404).send('Not found');
+  try {
+    const p = await store.getPublished(slug);
+    if (!p) return res.redirect(303, `/p/${slug}`);
+    if (!p.pin || !checkPin(p.pin, String(req.body?.pin || '').trim())) return res.redirect(303, `/p/${slug}?e=1`);
+    const secure = req.secure ? '; Secure' : '';
+    res.set('Set-Cookie', `pa_${slug}=${pubToken(slug, p.pin)}; Path=/p/${slug}; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}${secure}`);
+    res.redirect(303, `/p/${slug}`);
+  } catch (e) {
+    res.status(503).send('تعذّر التحقق، حاول بعد قليل.');
+  }
+});
+
+// حفظ بيانات التطبيق المنشور. الصفحة معزولة (أصلها null) فنسمح بطلبها عبر CORS، والحماية برمز الوصول.
+const pubDataLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: Number(process.env.PUB_WRITES_PER_HOUR || 1200), standardHeaders: true, legacyHeaders: false });
+const pubCors = (req, res, next) => {
+  res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'PUT, OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type, x-pub-token', 'Access-Control-Max-Age': '600' });
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+};
+app.options('/p/:slug/data/:key', pubCors);
+app.put('/p/:slug/data/:key', pubCors, pubDataLimiter, async (req, res) => {
+  const { slug, key } = req.params;
+  if (!SLUG_RE.test(slug) || !KEY_RE.test(key) || !req.body || !('v' in req.body)) return res.status(400).json({ error: 'bad_request' });
+  try {
+    const p = await store.getPublished(slug);
+    if (!p) return res.status(404).json({ error: 'not_found' });
+    if (!tokenOk(slug, p.pin, req.get('x-pub-token'))) return res.status(401).json({ error: 'unauthorized' });
+    const json = JSON.stringify(req.body.v ?? null);
+    if (json.length > 1_000_000) return res.status(413).json({ error: 'too_large' });
+    const ok = await store.setPubKey(slug, key, json);
+    ok ? res.json({ ok: true }) : res.status(413).json({ error: 'too_large', message: 'بيانات التطبيق تجاوزت الحد المسموح.' });
+  } catch (e) {
+    console.error('[pubdata]', e.message);
+    res.status(503).json({ error: 'store_error' });
   }
 });
 
@@ -350,7 +461,10 @@ app.use('/api/saudi', checkAccess, saudiRouter);
 const BUILD_SYSTEM = [
   'You are an expert front-end engineer and designer acting as an AI app builder.',
   'Build the app the user asks for as ONE complete, self-contained HTML file: inline CSS and JS only,',
-  'no external libraries, fonts, images or network calls (use emoji, inline SVG and CSS for visuals).',
+  'no external libraries, images or network calls (use emoji, inline SVG and CSS for visuals). The only exception: for Arabic UIs load one',
+  'font from fonts.googleapis.com (IBM Plex Sans Arabic, Tajawal or Cairo) with a system-ui fallback.',
+  'Before writing code, plan the app like a senior product designer: the real users, their daily workflows, every screen and its data,',
+  'and the details that make it feel like a finished commercial product (empty states, validation messages, confirmations, search, print views).',
   'Make it polished, responsive and fully working, with realistic sample data.',
   'If the request is in Arabic, use an Arabic RTL interface.',
   'Never use localStorage directly for app data. To persist user data use the global window.appDB',
@@ -390,18 +504,22 @@ const BUILD_SYSTEM = [
 // حد أعلى لحجم ملف المعرفة حتى لا يتضخم ويستهلك الرموز
 const BRIEF_MAX = 4000;
 
-async function callAnthropic(messages, system) {
+function anthropicBody(messages, system, opts, stream) {
+  const body = { model: opts.model || MODEL, max_tokens: 128000, messages };
+  if (stream) body.stream = true;
+  if (opts.effort) body.output_config = { effort: opts.effort };
+  // التعليمات الطويلة الثابتة تُخزَّن مؤقتاً عند Anthropic فتقل تكلفة كل طلب بعد الأول بشكل كبير
+  if (system) body.system = opts.cache ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] : system;
+  return body;
+}
+
+async function callAnthropic(messages, system, opts = {}) {
   if (!API_KEY) {
     const err = new Error('missing_api_key');
     err.code = 'missing_api_key';
     throw err;
   }
-  const body = {
-    model: MODEL,
-    max_tokens: 128000,
-    messages,
-  };
-  if (system) body.system = system;
+  const body = anthropicBody(messages, system, opts, false);
 
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -427,14 +545,13 @@ async function callAnthropic(messages, system) {
 }
 
 // نسخة متدفقة: ترسل النص للمتصفح أولاً بأول بدل الانتظار حتى نهاية الرد
-async function streamAnthropic(messages, system, onText) {
+async function streamAnthropic(messages, system, onText, opts = {}) {
   if (!API_KEY) {
     const err = new Error('missing_api_key');
     err.code = 'missing_api_key';
     throw err;
   }
-  const body = { model: MODEL, max_tokens: 128000, messages, stream: true };
-  if (system) body.system = system;
+  const body = anthropicBody(messages, system, opts, true);
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
@@ -503,7 +620,7 @@ async function callOpenAI(messages, system) {
 }
 
 // يختار محرك الذكاء الاصطناعي المطلوب (Claude افتراضيًا، أو ChatGPT إن طُلب ومتاح)
-async function callAI(provider, messages, system) {
+async function callAI(provider, messages, system, opts = {}) {
   if (provider === 'gemini') return callGemini(messages, system);
   if (provider === 'openai') {
     if (!OPENAI_ENABLED) {
@@ -513,15 +630,15 @@ async function callAI(provider, messages, system) {
     }
     return callOpenAI(messages, system);
   }
-  return callAnthropic(messages, system);
+  return callAnthropic(messages, system, opts);
 }
 
 // يرد إما دفعة واحدة (JSON) أو متدفقاً (نص عادي) إذا طلب المتصفح stream:true.
 // في التدفق: أي خطأ بعد بدء الإرسال يُكتب بعد العلامة \u0000ERR:
-async function respondAI(req, res, provider, messages, system) {
+async function respondAI(req, res, provider, messages, system, opts = {}) {
   const wantStream = req.body?.stream === true;
   if (!wantStream) {
-    const text = await callAI(provider, messages, system);
+    const text = await callAI(provider, messages, system, opts);
     return res.json({ text });
   }
   let started = false;
@@ -533,7 +650,7 @@ async function respondAI(req, res, provider, messages, system) {
   };
   try {
     if (!provider || provider === 'anthropic') {
-      await streamAnthropic(messages, system, (t) => { start(); res.write(t); });
+      await streamAnthropic(messages, system, (t) => { start(); res.write(t); }, opts);
     } else {
       const text = await callAI(provider, messages, system);
       start();
@@ -559,7 +676,20 @@ app.post('/api/build', checkAccess, async (req, res) => {
       (currentHtml && typeof currentHtml === 'string'
         ? `CURRENT APP:\n\`\`\`html\n${currentHtml}\n\`\`\`\n\nCHANGE REQUEST: `
         : 'APP REQUEST: ') + prompt;
-    await respondAI(req, res, provider, [{ role: 'user', content: userMsg }], BUILD_SYSTEM);
+    // معرفة متخصصة بنوع النشاط (محاسبة، عيادة، مطعم...) تُضاف فقط عند بناء تطبيق جديد أو حين يناسبها الطلب
+    const isEdit = !!(currentHtml && typeof currentHtml === 'string');
+    const notes = isEdit ? '' : domainNotes(prompt + '\n' + briefText);
+    const fullMsg = (notes ? `DOMAIN NOTES (expert knowledge for this kind of app; apply what fits the request):\n${notes}\n\n` : '') + userMsg;
+    const msgs = [{ role: 'user', content: fullMsg }];
+    const opts = { model: BUILD_MODEL, effort: BUILD_EFFORT, cache: true };
+    try {
+      await respondAI(req, res, provider, msgs, BUILD_SYSTEM, opts);
+    } catch (e) {
+      // إن لم يكن النموذج الأقوى متاحاً لمفتاحك نرجع للنموذج العادي بدل أن يفشل البناء
+      if (res.headersSent || e.status === undefined || ![400, 403, 404].includes(e.status) || BUILD_MODEL === MODEL) throw e;
+      console.warn('[build] تعذّر استخدام', BUILD_MODEL, '— الرجوع إلى', MODEL, ':', e.message);
+      await respondAI(req, res, provider, msgs, BUILD_SYSTEM, { cache: true });
+    }
   } catch (e) {
     res.status(e.code === 'missing_api_key' ? 500 : 502).json({
       error: e.code || 'server_error',
@@ -608,6 +738,7 @@ app.get('/api/health', (req, res) => {
     ok: true,
     hasApiKey: !!API_KEY,
     model: MODEL,
+    buildModel: BUILD_MODEL,
     hasOpenAIKey: OPENAI_ENABLED,
     openaiModel: OPENAI_MODEL,
     hasGeminiKey: geminiEnabled(),

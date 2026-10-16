@@ -7,6 +7,8 @@ import crypto from 'crypto';
 
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const MAX_PROJECTS = Number(process.env.MAX_PROJECTS_PER_USER || 100);
+// الحد الأقصى لحجم بيانات التطبيق المنشور الواحد
+const PUB_DATA_MAX = Number(process.env.PUB_DATA_MAX_BYTES || 5_000_000);
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 
 export const storageKind = DATABASE_URL ? 'postgres' : 'file';
@@ -46,6 +48,9 @@ function pgStore() {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
           PRIMARY KEY (owner, id)
         )`);
+        // بيانات التطبيق المنشور (مشتركة بين من يملك الرابط/الرمز) ورمز الدخول الاختياري
+        await p.query('ALTER TABLE projects ADD COLUMN IF NOT EXISTS pub_data JSONB');
+        await p.query('ALTER TABLE projects ADD COLUMN IF NOT EXISTS pub_pin TEXT');
         return p;
       })().catch((e) => { poolP = null; throw e; });
     }
@@ -79,15 +84,26 @@ function pgStore() {
       const cur = await this.get(owner, id);
       if (!cur) return null;
       const slug = cur.slug || newSlug();
-      await q('UPDATE projects SET slug=$3, pub_html=html WHERE owner=$1 AND id=$2', [owner, id, slug]);
+      await q("UPDATE projects SET slug=$3, pub_html=html, pub_data=COALESCE(pub_data, data, '{}') WHERE owner=$1 AND id=$2", [owner, id, slug]);
       return slug;
     },
     async unpublish(owner, id) {
       await q('UPDATE projects SET slug=NULL, pub_html=NULL WHERE owner=$1 AND id=$2', [owner, id]);
     },
     async getPublished(slug) {
-      const r = await q('SELECT name, pub_html FROM projects WHERE slug=$1 AND pub_html IS NOT NULL', [slug]);
-      return r.rows[0] ? { name: r.rows[0].name, html: r.rows[0].pub_html } : null;
+      const r = await q('SELECT name, pub_html, pub_data, pub_pin FROM projects WHERE slug=$1 AND pub_html IS NOT NULL', [slug]);
+      const x = r.rows[0];
+      return x ? { name: x.name, html: x.pub_html, data: x.pub_data || {}, pin: x.pub_pin || null } : null;
+    },
+    async setPubKey(slug, key, json) {
+      const r = await q(`UPDATE projects SET pub_data = jsonb_set(COALESCE(pub_data,'{}'), ARRAY[$2::text], $3::jsonb)
+        WHERE slug=$1 AND pub_html IS NOT NULL
+          AND octet_length(COALESCE(pub_data,'{}')::text) + octet_length($3) <= $4`, [slug, key, json, PUB_DATA_MAX]);
+      return r.rowCount > 0;
+    },
+    async setPin(owner, id, pin) {
+      const r = await q('UPDATE projects SET pub_pin=$3 WHERE owner=$1 AND id=$2', [owner, id, pin]);
+      return r.rowCount > 0;
     },
     async ping() { await q('SELECT 1'); },
   };
@@ -119,7 +135,7 @@ function fileStore() {
     async get(owner, id) {
       const p = user(owner)[id];
       if (!p) return null;
-      const { pub_html, ...rest } = p;
+      const { pub_html, pub_data, pub_pin, ...rest } = p;
       return { ...rest, slug: p.slug || null };
     },
     async put(owner, id, p) {
@@ -139,6 +155,7 @@ function fileStore() {
       if (!p) return null;
       p.slug ||= newSlug();
       p.pub_html = p.html;
+      p.pub_data ||= p.data || {};
       db.slugs[p.slug] = { owner, id };
       persist();
       return p.slug;
@@ -152,7 +169,24 @@ function fileStore() {
     async getPublished(slug) {
       const ref = db.slugs[slug];
       const p = ref && db.users[ref.owner]?.[ref.id];
-      return p?.pub_html ? { name: p.name, html: p.pub_html } : null;
+      return p?.pub_html ? { name: p.name, html: p.pub_html, data: p.pub_data || {}, pin: p.pub_pin || null } : null;
+    },
+    async setPubKey(slug, key, json) {
+      const ref = db.slugs[slug];
+      const p = ref && db.users[ref.owner]?.[ref.id];
+      if (!p?.pub_html) return false;
+      const next = { ...(p.pub_data || {}), [key]: JSON.parse(json) };
+      if (JSON.stringify(next).length > PUB_DATA_MAX) return false;
+      p.pub_data = next;
+      persist();
+      return true;
+    },
+    async setPin(owner, id, pin) {
+      const p = user(owner)[id];
+      if (!p) return false;
+      p.pub_pin = pin;
+      persist();
+      return true;
     },
     async ping() {},
   };
