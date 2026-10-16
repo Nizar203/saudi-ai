@@ -397,7 +397,7 @@ async function apiStream(path,body,signal,onText){
 const r=await post(path,Object.assign({stream:true},body),signal);
 if(!r.body||!/text\/plain/.test(r.headers.get('content-type')||'')){const j=await r.json();onText&&onText(j.text);return j}
 const rd=r.body.getReader(),dec=new TextDecoder();let t='';
-for(;;){const{done,value}=await rd.read();if(done)break;t+=dec.decode(value,{stream:true});const k=t.indexOf('\u0000ERR:');if(k>=0){const err=new Error(t.slice(k+5)||'stream_error');err.code='upstream_error';throw err}onText&&onText(t)}
+for(;;){const{done,value}=await rd.read();if(done)break;t+=dec.decode(value,{stream:true});if(t.indexOf('\u0001')>=0){t=t.replace(/\u0001/g,'');if(!t){onText&&onText('');continue}}const k=t.indexOf('\u0000ERR:');if(k>=0){const err=new Error(t.slice(k+5)||'stream_error');err.code='upstream_error';throw err}onText&&onText(t)}
 return{text:t}}
 const callBuild=(prompt,currentHtml,brief,signal,onText)=>apiStream('/api/build',{prompt,currentHtml,brief,provider:S.provider||'anthropic'},signal,onText);
 const callChat=(messages,signal,onText)=>S.provider==='saudi'?api('/api/saudi/chat',{messages},signal):apiStream('/api/chat',{messages,provider:S.provider||'anthropic'},signal,onText);
@@ -415,7 +415,7 @@ text=text.trim();if(!text||busy)return;if(!opts.auto)lastText=text;
 const l=logs[mode],m=mode,pr=P();let built=false;
 add('u',opts.label||text,l);if(!opts.auto)inp.value='';
 lock(true);ctrl=new AbortController();
-const bub=add('a','جارٍ التفكير…',l);
+const bub=add('a','جارٍ التفكير…',l),t0=Date.now();
 try{
 if(m==='image'){
 const r=await api('/api/image',{prompt:text,image:baseImg||undefined,aspect:baseImg?undefined:$('#aspect').value},ctrl.signal);
@@ -424,7 +424,7 @@ bub.remove();(r.images||[]).forEach(im=>addImage(im,r.text,text));
 const r=await callChat(hist().concat({role:'user',content:text}),ctrl.signal,t=>{bub.textContent=t;l.scrollTop=l.scrollHeight});
 bub.textContent=r.text;S.chat.push({c:'u',t:text},{c:'a',t:r.text});save();
 }else{
-const r=await callBuild(text,pr.html||undefined,pr.brief||undefined,ctrl.signal,t=>{const i=t.indexOf(F);bub.textContent=(i>=0?t.slice(0,i).trim()+'\n\n':'')+'✍️ جارٍ كتابة التطبيق… '+t.length.toLocaleString('ar')+' حرف'});
+const r=await callBuild(text,pr.html||undefined,pr.brief||undefined,ctrl.signal,t=>{if(!t){bub.textContent='🧠 يخطط للتطبيق… '+Math.round((Date.now()-t0)/1000).toLocaleString('ar')+' ث';return}const i=t.indexOf(F);bub.textContent=(i>=0?t.slice(0,i).trim()+'\n\n':'')+'✍️ جارٍ كتابة التطبيق… '+t.length.toLocaleString('ar')+' حرف'});
 const o=parse(r.text);
 if(o.code&&/<\/html>/i.test(o.code)){pr.html=o.code;if(o.brief){pr.brief=o.brief;if(P()===pr)briefEl.value=o.brief}render();D.dataset.pane='preview';syncTabs();pr.log.push({c:'u',t:opts.label||text},{c:'a',t:(o.msg||'تم بناء التطبيق.')});built=true;if(pr.name===NEWN)pr.name=text.slice(0,28);save();fillSel();bub.textContent=(o.msg||'تم بناء التطبيق.')+'\n\n✅ المعاينة جاهزة، اطلب أي تعديل.'}
 else bub.textContent=(o.msg||r.text)+'\n\n⚠️ لم يكتمل الكود (الناتج طويل). جرّب طلبًا أبسط أو على خطوات.';

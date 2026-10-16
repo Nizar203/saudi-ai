@@ -23,8 +23,8 @@ app.set('trust proxy', true); // عشان يعرف أن الاتصال https خ�
 const API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
 // بناء التطبيقات يستحق نموذجاً أقوى وتفكيراً أعمق من المحادثة العادية
-const BUILD_MODEL = process.env.ANTHROPIC_BUILD_MODEL || 'claude-opus-5-5';
-const BUILD_EFFORT = process.env.ANTHROPIC_BUILD_EFFORT || 'high'; // low | medium | high | xhigh | max
+const BUILD_MODEL = process.env.ANTHROPIC_BUILD_MODEL || MODEL;
+const BUILD_EFFORT = process.env.ANTHROPIC_BUILD_EFFORT || 'medium'; // low | medium | high | xhigh | max
 const ACCESS_CODE = process.env.ACCESS_CODE || '';
 const RATE_LIMIT_PER_HOUR = Number(process.env.RATE_LIMIT_PER_HOUR || 20);
 const PORT = process.env.PORT || 3000;
@@ -545,7 +545,7 @@ async function callAnthropic(messages, system, opts = {}) {
 }
 
 // نسخة متدفقة: ترسل النص للمتصفح أولاً بأول بدل الانتظار حتى نهاية الرد
-async function streamAnthropic(messages, system, onText, opts = {}) {
+async function streamAnthropic(messages, system, onText, opts = {}, onThink) {
   if (!API_KEY) {
     const err = new Error('missing_api_key');
     err.code = 'missing_api_key';
@@ -577,6 +577,7 @@ async function streamAnthropic(messages, system, onText, opts = {}) {
       let ev;
       try { ev = JSON.parse(line.slice(5)); } catch { continue; }
       if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') onText(ev.delta.text);
+      else if (onThink && (ev.type === 'content_block_start' || ev.type === 'content_block_delta')) onThink();
       else if (ev.type === 'error') {
         const err = new Error(ev.error?.message || 'stream_error');
         err.code = 'upstream_error';
@@ -650,7 +651,11 @@ async function respondAI(req, res, provider, messages, system, opts = {}) {
   };
   try {
     if (!provider || provider === 'anthropic') {
-      await streamAnthropic(messages, system, (t) => { start(); res.write(t); }, opts);
+      // أثناء تفكير النموذج نرسل نبضة صغيرة (\u0001) كل ثانيتين حتى يعرف المتصفح أن العمل جارٍ ولا ينقطع الاتصال
+      let last = 0;
+      const beat = () => { const n = Date.now(); if (n - last > 2000) { last = n; start(); res.write('\u0001'); } };
+      const iv = setInterval(beat, 5000);
+      try { await streamAnthropic(messages, system, (t) => { start(); res.write(t); }, opts, beat); } finally { clearInterval(iv); }
     } else {
       const text = await callAI(provider, messages, system);
       start();
