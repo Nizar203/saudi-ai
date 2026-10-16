@@ -371,26 +371,26 @@ const ACCESS_KEY='studio:access';
 function getAccessCode(){try{return localStorage.getItem(ACCESS_KEY)||''}catch(e){return ''}}
 function setAccessCode(v){try{localStorage.setItem(ACCESS_KEY,v)}catch(e){}}
 
-async function api(path,body,signal){
-const headers={'content-type':'application/json'};
-const code=getAccessCode();if(code)headers['x-access-code']=code;
-const r=await fetch(path,{method:'POST',headers,body:JSON.stringify(body),signal});
+let GOOGLE_MODE=false,lastText='';
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+// إرسال موحّد: يعيد المحاولة تلقائياً إذا كان الخادم يستيقظ أو يُحدَّث (502/503/504)، ويعيد تسجيل الدخول إن انتهت الجلسة
+async function post(path,payload,signal,tries=3){
+const headers={'content-type':'application/json'};const code=getAccessCode();if(code)headers['x-access-code']=code;
+let r;try{r=await fetch(path,{method:'POST',headers,body:JSON.stringify(payload),signal})}
+catch(e){if(e.name==='AbortError'||tries<=1)throw e;await wait(4000);return post(path,payload,signal,tries-1)}
+const ct=r.headers.get('content-type')||'';
+if([502,503,504].includes(r.status)&&!/json/.test(ct)&&tries>1){await wait(5000);return post(path,payload,signal,tries-1)}
 if(r.status===401){
-const entered=prompt('هذا الموقع محمي برمز وصول. أدخل الرمز:');
-if(entered){setAccessCode(entered);return api(path,body,signal);}
-const err=new Error('unauthorized');err.code='not_granted';throw err;
-}
-if(r.status===429){const err=new Error('rate_limited');err.code='rate_limited';throw err;}
-if(!r.ok){let j={};try{j=await r.json()}catch(e){}const err=new Error(j.message||j.error||('HTTP '+r.status));err.code=j.error||'server_error';throw err;}
-return r.json();
-}
+if(GOOGLE_MODE){try{if(lastText)localStorage.setItem('saudi:pending',lastText)}catch(e){}location.href='/auth/google';const err=new Error('relogin');err.code='relogin';throw err}
+const entered=prompt('هذا الموقع محمي برمز وصول. أدخل الرمز:');if(entered){setAccessCode(entered);return post(path,payload,signal,tries)}
+const err=new Error('unauthorized');err.code='not_granted';throw err}
+if(r.status===429){const err=new Error('rate_limited');err.code='rate_limited';throw err}
+if(!r.ok){let j={};try{j=await r.json()}catch(e){}const err=new Error(j.message||j.error||(r.status>=502?'الخادم لا يستجيب الآن، حاول بعد دقيقة.':'HTTP '+r.status));err.code=j.error||'server_error';throw err}
+return r}
+async function api(path,body,signal){return (await post(path,body,signal)).json()}
 // طلب متدفق: يعرض النص أولاً بأول ويعيد النص كاملاً في النهاية
 async function apiStream(path,body,signal,onText){
-const headers={'content-type':'application/json'};const code=getAccessCode();if(code)headers['x-access-code']=code;
-const r=await fetch(path,{method:'POST',headers,body:JSON.stringify(Object.assign({stream:true},body)),signal});
-if(r.status===401){const entered=prompt('هذا الموقع محمي برمز وصول. أدخل الرمز:');if(entered){setAccessCode(entered);return apiStream(path,body,signal,onText)}const err=new Error('unauthorized');err.code='not_granted';throw err}
-if(r.status===429){const err=new Error('rate_limited');err.code='rate_limited';throw err}
-if(!r.ok){let j={};try{j=await r.json()}catch(e){}const err=new Error(j.message||j.error||('HTTP '+r.status));err.code=j.error||'server_error';throw err}
+const r=await post(path,Object.assign({stream:true},body),signal);
 if(!r.body||!/text\/plain/.test(r.headers.get('content-type')||'')){const j=await r.json();onText&&onText(j.text);return j}
 const rd=r.body.getReader(),dec=new TextDecoder();let t='';
 for(;;){const{done,value}=await rd.read();if(done)break;t+=dec.decode(value,{stream:true});const k=t.indexOf('\u0000ERR:');if(k>=0){const err=new Error(t.slice(k+5)||'stream_error');err.code='upstream_error';throw err}onText&&onText(t)}
@@ -407,7 +407,7 @@ if(S.provider==='saudi'&&sb.disabled)S.provider='anthropic';
 document.querySelectorAll('#engineSeg button').forEach(b=>b.classList.toggle('on',b.dataset.e===S.provider))}
 
 async function send(text,opts){opts=opts||{};
-text=text.trim();if(!text||busy)return;
+text=text.trim();if(!text||busy)return;if(!opts.auto)lastText=text;
 const l=logs[mode],m=mode,pr=P();let built=false;
 add('u',opts.label||text,l);if(!opts.auto)inp.value='';
 lock(true);ctrl=new AbortController();
@@ -428,7 +428,7 @@ else bub.textContent=(o.msg||r.text)+'\n\n⚠️ لم يكتمل الكود (ا�
 }catch(e){
 const c=e&&e.code;
 bub.textContent=(e&&e.name==='AbortError')||c==='cancelled'?'تم الإيقاف.':
-c==='not_granted'?'رمز الوصول غير صحيح.':
+c==='relogin'?'انتهت جلستك، جارٍ إعادة تسجيل الدخول… سيبقى طلبك محفوظاً.':c==='not_granted'?'رمز الوصول غير صحيح.':
 c==='rate_limited'?'الطلبات كثيرة، حاول بعد قليل.':
 S.provider==='saudi'&&e&&e.message?e.message:
 c==='missing_api_key'&&m==='image'?'الخادم لم يُضبط بمفتاح Gemini بعد (GEMINI_API_KEY).':c==='missing_api_key'&&S.provider==='gemini'?'الخادم لم يُضبط بمفتاح Gemini بعد (GEMINI_API_KEY).':c==='missing_api_key'?(S.provider==='openai'?'الخادم لم يُضبط بمفتاح OpenAI API بعد (OPENAI_API_KEY).':'الخادم لم يُضبط بمفتاح Anthropic API بعد.'):
@@ -516,7 +516,7 @@ setEngine(S.provider||'anthropic');
 try{const pv=localStorage.getItem('saudi:pending');if(pv){localStorage.removeItem('saudi:pending');inp.value=pv;setTimeout(()=>inp.focus(),50)}}catch(e){}
 
 fetch('/api/saudi/status').then(r=>r.ok?r.json():{}).then(j=>{saudiReady=!!j.enabled;syncEngine()}).catch(()=>{});
-fetch('/api/health').then(r=>r.json()).then(h=>{
+fetch('/api/health').then(r=>r.json()).then(h=>{GOOGLE_MODE=!!h.googleLoginEnabled;
 if(!h.hasOpenAIKey){const b=document.querySelector('#engineSeg [data-e="openai"]');if(b){b.disabled=true;b.title='لم يُضبط OPENAI_API_KEY بعد في الاستضافة'}}
 if(!h.hasGeminiKey){const b=document.querySelector('#engineSeg [data-e="gemini"]');if(b){b.disabled=true;b.title='لم يُضبط GEMINI_API_KEY بعد في الاستضافة'}if(S.provider==='gemini')setEngine('anthropic')}
 const activeMissing=S.provider==='saudi'||S.provider==='gemini'?false:(S.provider==='openai')?!h.hasOpenAIKey:!h.hasApiKey;

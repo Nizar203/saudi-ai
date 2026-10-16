@@ -36,7 +36,12 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const ALLOWED_EMAILS = (process.env.ALLOWED_GOOGLE_EMAILS || '')
   .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+// سر الجلسات يجب أن يبقى ثابتاً بين التحديثات، وإلا يُطرد كل المستخدمين مع كل نشر.
+// إن لم يُضبط SESSION_SECRET نشتقه من أسرار ثابتة موجودة أصلاً في الاستضافة.
+const SESSION_SECRET = process.env.SESSION_SECRET ||
+  ((process.env.GOOGLE_CLIENT_SECRET || process.env.ANTHROPIC_API_KEY)
+    ? crypto.createHash('sha256').update('saudi-ai-session:' + (process.env.GOOGLE_CLIENT_SECRET || '') + (process.env.ANTHROPIC_API_KEY || '')).digest('hex')
+    : crypto.randomBytes(32).toString('hex'));
 const GOOGLE_ENABLED = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 
 if (!API_KEY) {
