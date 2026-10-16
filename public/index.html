@@ -317,7 +317,7 @@ async function syncNow(){if(syncing){schedSync();return}syncing=true;let failed=
 for(const p of S.projects){if(!worth(p))continue;const g=sig(p);if(sent[p.id]===g)continue;setSync('جارٍ الحفظ…');
 try{await jfetch('/api/projects/'+p.id,'PUT',{name:p.name,html:p.html,brief:p.brief||'',log:p.log,data:p.data});sent[p.id]=g}catch(e){failed=true;setSync(e.code==='limit'?e.message:'⚠️ تعذّر الحفظ، سنعيد المحاولة',true)}}
 syncing=false;if(failed)tS=setTimeout(syncNow,15000);else setSync('✓ محفوظ في حسابك')}
-async function jfetch(path,method,body){const r=await fetch(path,{method,headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+async function jfetch(path,method,body){const r=await fetch(path,{method,headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined});checkVersion(r.headers.get('x-app-version'));
 let j={};try{j=await r.json()}catch(e){}if(!r.ok){const err=new Error(j.message||j.error||('HTTP '+r.status));err.code=j.error;throw err}return j}
 async function initRemote(){let me;try{me=await jfetch('/api/me','GET')}catch(e){return}
 if(!me||me.storage!=='server')return;remote=true;$('#who').hidden=false;$('#whoMail').textContent=me.email;
@@ -379,11 +379,16 @@ function setAccessCode(v){try{localStorage.setItem(ACCESS_KEY,v)}catch(e){}}
 let GOOGLE_MODE=false,lastText='';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 // إرسال موحّد: يعيد المحاولة تلقائياً إذا كان الخادم يستيقظ أو يُحدَّث (502/503/504)، ويعيد تسجيل الدخول إن انتهت الجلسة
+// إن تحدّث الخادم بعد فتح الصفحة: نطلب من المستخدم تحديث الصفحة حتى لا تعمل نسخة قديمة مع خادم جديد
+let appVer=null,verNoted=false;
+function checkVersion(v){if(!v)return;if(!appVer){appVer=v;return}if(v!==appVer&&!verNoted){verNoted=true;
+const d=document.createElement('div');d.setAttribute('role','status');d.style.cssText='position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99;background:#006c35;color:#fff;padding:10px 16px;border-radius:12px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.2);cursor:pointer';
+d.textContent='🔄 يوجد تحديث جديد للموقع — اضغط هنا لتحديث الصفحة';d.onclick=()=>location.reload();document.body.appendChild(d)}}
 async function post(path,payload,signal,tries=3){
 const headers={'content-type':'application/json'};const code=getAccessCode();if(code)headers['x-access-code']=code;
 let r;try{r=await fetch(path,{method:'POST',headers,body:JSON.stringify(payload),signal})}
 catch(e){if(e.name==='AbortError'||tries<=1)throw e;await wait(4000);return post(path,payload,signal,tries-1)}
-const ct=r.headers.get('content-type')||'';
+checkVersion(r.headers.get('x-app-version'));const ct=r.headers.get('content-type')||'';
 if([502,503,504].includes(r.status)&&!/json/.test(ct)&&tries>1){await wait(5000);return post(path,payload,signal,tries-1)}
 if(r.status===401){
 if(GOOGLE_MODE){try{if(lastText)localStorage.setItem('saudi:pending',lastText)}catch(e){}location.href='/auth/google';const err=new Error('relogin');err.code='relogin';throw err}

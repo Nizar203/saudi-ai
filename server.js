@@ -65,6 +65,15 @@ if (!GOOGLE_ENABLED) {
   console.warn('[تحذير] تسجيل الدخول بجوجل مفعّل لكن ALLOWED_GOOGLE_EMAILS فارغ — أي حساب جوجل سيقدر يدخل الموقع.');
 }
 
+// رقم إصدار يتغيّر مع كل تحديث للخادم، لتعرف الصفحة المفتوحة أن عندها نسخة قديمة
+const APP_VERSION = process.env.RENDER_GIT_COMMIT?.slice(0, 7) || String(Date.now());
+const activeStreams = new Set();
+app.use('/api/', (req, res, next) => {
+  res.set('x-app-version', APP_VERSION);
+  activeStreams.add(res);
+  res.on('close', () => activeStreams.delete(res));
+  next();
+});
 app.use(compression({ filter: (req, res) => !req.path.startsWith('/api/') && compression.filter(req, res) }));
 app.use(express.json({ limit: '12mb' }));
 
@@ -853,6 +862,16 @@ app.get('/api/health', (req, res) => {
 
 if (storageKind === 'file') console.warn('[معلومة] DATABASE_URL غير مضبوط — المشاريع تُحفظ في ملف محلي، وقد تُمسح عند إعادة النشر على Render المجاني.');
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`سعودي AI يعمل على المنفذ ${PORT}`);
+});
+
+// عند التحديث يرسل Render إشارة الإيقاف: نخبر كل من يبني الآن بالسبب بدل أن ينقطع طلبه بصمت
+process.on('SIGTERM', () => {
+  console.log('[shutdown] تحديث جديد — إنهاء', activeStreams.size, 'طلب جارٍ');
+  for (const r of activeStreams) {
+    try { r.end('\u0000ERR:يجري تحديث الموقع الآن. انتظر دقيقة ثم حدّث الصفحة وأعد الطلب.'); } catch { /* ignore */ }
+  }
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 8000).unref();
 });
